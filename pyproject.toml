@@ -1,0 +1,34 @@
+[project]
+name = "bank-statement-parser"
+version = "0.1.0"
+description = "Bank account statement PDF parser"
+readme = "README.md"
+authors = [
+    { name = "Akhil Narang", email = "me@akhilnarang.dev" }
+]
+requires-python = ">=3.14"
+dependencies = [
+    "pdfplumber>=0.11.9",
+    "pydantic>=2.0",
+    "pymupdf>=1.26.7",
+    "pypdf>=6.7.0",
+    "rich>=14.2.0",
+    "typer>=0.16.0",
+]
+
+[project.scripts]
+bank-statement-parser = "bank_statement_parser.cli:main"
+
+[build-system]
+requires = ["hatchling>=1.27.0"]
+build-backend = "hatchling.build"
+
+[tool.uv]
+package = true
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+    "ruff>=0.15.9",
+    "ty>=0.0.29",
+]
