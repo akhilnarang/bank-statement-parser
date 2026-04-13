@@ -13,6 +13,7 @@ from bank_statement_parser.parsers.hdfc import HdfcBankStatementParser
 from bank_statement_parser.parsers.icici import IciciBankStatementParser
 from bank_statement_parser.parsers.idfc import IdfcBankStatementParser
 from bank_statement_parser.parsers.indusind import IndusindBankStatementParser
+from bank_statement_parser.parsers.kotak import KotakBankStatementParser
 from bank_statement_parser.parsers.slice import SliceBankStatementParser
 from bank_statement_parser.parsers.uboi import UboiBankStatementParser
 
@@ -21,6 +22,7 @@ type BankChoice = Literal[
     "icici",
     "idfc",
     "indusind",
+    "kotak",
     "slice",
     "uboi",
 ]
@@ -39,6 +41,8 @@ def get_parser(bank: BankChoice) -> BankStatementParser:
             return IciciBankStatementParser()
         case "idfc":
             return IdfcBankStatementParser()
+        case "kotak":
+            return KotakBankStatementParser()
         case "slice":
             return SliceBankStatementParser()
         case "uboi":

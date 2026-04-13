@@ -29,6 +29,7 @@ class BankOption(StrEnum):
     icici = "icici"
     idfc = "idfc"
     indusind = "indusind"
+    kotak = "kotak"
     slice = "slice"
     uboi = "uboi"
 
