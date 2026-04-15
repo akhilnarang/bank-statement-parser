@@ -2,7 +2,7 @@
 
 Parses bank account statement PDFs (savings/current accounts) into structured output for reconciliation and analysis. Parallel to [`cc-parser`](https://github.com/akhilnarang/cc-parser) but for bank account statements instead of credit card statements.
 
-Supported banks: HDFC, ICICI, IDFC FIRST, IndusInd, Slice, Union Bank of India.
+Supported banks: HDFC, ICICI, IDFC FIRST, IndusInd, Kotak Mahindra, Slice, Union Bank of India.
 
 Adding a new bank? Use the skill at `.agents/skills/add-bank-parser/` to guide the process.
 
@@ -43,4 +43,10 @@ The CLI prompts for a password if the PDF is encrypted.
 uv sync
 uv run pytest tests/
 uv run ruff check bank_statement_parser/
+uv run ty check bank_statement_parser/
 ```
+
+Notes:
+- `tests/` is intentionally empty right now, so `uv run pytest tests/` exits with "no tests ran".
+- Parser registration is centralized in `bank_statement_parser/parsers/registry.py`; `factory.py`, the CLI, and compatibility re-exports continue to work.
+- Shared parser internals now live under `bank_statement_parser/parsers/{extractors,utils,metadata,reconciliation}` with compatibility shims preserved from `parsers/generic.py`.

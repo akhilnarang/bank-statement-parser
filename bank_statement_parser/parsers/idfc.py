@@ -14,20 +14,18 @@ IDFC bank statements have:
 from __future__ import annotations
 
 import re
-from decimal import Decimal
 from typing import Any
 
 from bank_statement_parser.models import BankTransaction, ParsedBankStatement
-from bank_statement_parser.parsers.generic import (
-    MONTH_ABBREVS,
-    GenericBankStatementParser,
-    _build_reconciliation,
-    _extract_amount,
+from bank_statement_parser.parsers.extractors import group_words_into_lines
+from bank_statement_parser.parsers.generic import GenericBankStatementParser
+from bank_statement_parser.parsers.metadata import MetadataExtractor
+from bank_statement_parser.parsers.reconciliation import build_reconciliation
+from bank_statement_parser.parsers.utils import (
     detect_channel,
+    extract_amount,
     extract_reference_number,
-    format_amount,
-    group_words_into_lines,
-    parse_amount,
+    parse_date_text,
 )
 
 _ACCOUNT_RE = re.compile(
@@ -42,27 +40,7 @@ _NAME_RE = re.compile(r"^(Mr\.|Mrs\.|Ms\.|Dr\.)\s+(.+)", re.MULTILINE)
 _OPENING_ROW_RE = re.compile(
     r"([\d,]+\.\d{2})\s+CR\s+\d+\s+\d+\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+CR",
 )
-
-
-def _parse_idfc_date(raw: str) -> str | None:
-    """Parse 'DD Mon YY' or 'DD-MON-YYYY' into DD/MM/YYYY."""
-    raw = raw.strip()
-
-    # DD-MON-YYYY (e.g., "01-MAR-2026")
-    m = re.fullmatch(r"(\d{2})-([A-Z]{3})-(\d{4})", raw, re.IGNORECASE)
-    if m:
-        month = MONTH_ABBREVS.get(m.group(2).upper())
-        if month:
-            return f"{m.group(1)}/{month}/{m.group(3)}"
-
-    # DD Mon YY (e.g., "01 Mar 26")
-    m = re.fullmatch(r"(\d{2})\s+([A-Za-z]{3})\s+(\d{2})", raw)
-    if m:
-        month = MONTH_ABBREVS.get(m.group(2).upper())
-        if month:
-            return f"{m.group(1)}/{month}/20{m.group(3)}"
-
-    return None
+_IDFC_DATE_HINTS = ["%d-%b-%Y", "%d %b %y"]
 
 
 def _strip_cr(balance: str) -> str:
@@ -75,10 +53,32 @@ def _is_cr_suffix(token: str) -> bool:
     return token.strip().upper() in ("CR", "DR")
 
 
+class IdfcMetadataExtractor(MetadataExtractor):
+    account_number_pattern = _ACCOUNT_RE
+    period_pattern = _PERIOD_RE
+    name_pattern = _NAME_RE
+    opening_balance_pattern = None
+    closing_balance_pattern = None
+
+    def extract_account_holder_name(self, full_text: str) -> str | None:
+        match = self.name_pattern.search(full_text) if self.name_pattern else None
+        return match.group(2).strip() if match else None
+
+    def extract_period(self, full_text: str) -> tuple[str | None, str | None]:
+        match = self.period_pattern.search(full_text) if self.period_pattern else None
+        if not match:
+            return None, None
+        return (
+            parse_date_text(match.group(1), format_hints=["%d-%b-%Y"]),
+            parse_date_text(match.group(2), format_hints=["%d-%b-%Y"]),
+        )
+
+
 class IdfcBankStatementParser(GenericBankStatementParser):
     """Parser for IDFC FIRST Bank savings/current account statements."""
 
     bank = "idfc"
+    metadata_extractor = IdfcMetadataExtractor()
 
     def parse(self, raw_data: dict[str, Any]) -> ParsedBankStatement:
         pages = raw_data.get("pages", [])
@@ -88,18 +88,12 @@ class IdfcBankStatementParser(GenericBankStatementParser):
             str(page.get("text", "")) for page in pages if isinstance(page, dict)
         )
 
-        # Metadata
-        account_number = self._extract_account_number(full_text)
-        holder_name = self._extract_name(full_text)
-        period_start, period_end = self._extract_period(full_text)
+        metadata = self.metadata_extractor.extract(full_text)
         opening_balance, closing_balance = self._extract_balances(full_text)
 
         # Transactions — from tables across all pages
         transactions = self._extract_idfc_transactions(pages)
-
-        # Assign IDs
-        for i, txn in enumerate(transactions):
-            txn.transaction_id = f"idfc_txn_{i:04d}"
+        transactions = self._post_process(transactions, raw_data)
 
         # If we didn't find opening/closing from text, try from transactions
         if not closing_balance and transactions:
@@ -107,54 +101,23 @@ class IdfcBankStatementParser(GenericBankStatementParser):
             if last_bal:
                 closing_balance = last_bal
 
-        # Compute totals
-        debit_total = Decimal("0")
-        credit_total = Decimal("0")
-        for txn in transactions:
-            amt = parse_amount(txn.amount)
-            if txn.transaction_type == "debit":
-                debit_total += amt
-            else:
-                credit_total += amt
-
-        reconciliation = _build_reconciliation(
+        reconciliation = build_reconciliation(
             transactions,
             opening_balance,
             closing_balance,
         )
 
-        return ParsedBankStatement(
-            file=file_name,
-            bank=self.bank,
-            account_holder_name=holder_name,
-            account_number=account_number,
-            statement_period_start=period_start,
-            statement_period_end=period_end,
+        return self._build_statement(
+            file_name=file_name,
+            transactions=transactions,
+            account_holder_name=metadata["account_holder_name"],
+            account_number=metadata["account_number"],
+            statement_period_start=metadata["period_start"],
+            statement_period_end=metadata["period_end"],
             opening_balance=opening_balance,
             closing_balance=closing_balance,
-            debit_count=sum(1 for t in transactions if t.transaction_type == "debit"),
-            credit_count=sum(1 for t in transactions if t.transaction_type == "credit"),
-            debit_total=format_amount(debit_total),
-            credit_total=format_amount(credit_total),
-            transactions=transactions,
             reconciliation=reconciliation,
         )
-
-    def _extract_account_number(self, text: str) -> str | None:
-        m = _ACCOUNT_RE.search(text)
-        return m.group(1) if m else None
-
-    def _extract_name(self, text: str) -> str | None:
-        m = _NAME_RE.search(text)
-        return m.group(2).strip() if m else None
-
-    def _extract_period(self, text: str) -> tuple[str | None, str | None]:
-        m = _PERIOD_RE.search(text)
-        if not m:
-            return None, None
-        start = _parse_idfc_date(m.group(1))
-        end = _parse_idfc_date(m.group(2))
-        return start, end
 
     def _extract_balances(self, text: str) -> tuple[str | None, str | None]:
         """Extract opening and closing balance from the summary table row."""
@@ -238,7 +201,10 @@ class IdfcBankStatementParser(GenericBankStatementParser):
         for line_words in lines:
             tokens = [w["text"] for w in line_words]
             if len(tokens) >= 3:
-                date = _parse_idfc_date(f"{tokens[0]} {tokens[1]} {tokens[2]}")
+                date = parse_date_text(
+                    f"{tokens[0]} {tokens[1]} {tokens[2]}",
+                    format_hints=["%d %b %y"],
+                )
                 if date:
                     time_str = None
                     if len(tokens) > 3 and re.fullmatch(r"\d{2}:\d{2}", tokens[3]):
@@ -278,7 +244,7 @@ class IdfcBankStatementParser(GenericBankStatementParser):
             for col_idx in [2, 3]:
                 if col_idx < len(row):
                     cell = str(row[col_idx] or "").strip()
-                    if _extract_amount(cell):
+                    if extract_amount(cell):
                         has_amount = True
                         break
             if has_amount:
@@ -301,8 +267,8 @@ class IdfcBankStatementParser(GenericBankStatementParser):
             credit_str = str(row[3] or "").strip() if len(row) > 3 else ""
             balance_str = str(row[4] or "").strip() if len(row) > 4 else ""
 
-            debit_amt = _extract_amount(debit_str) if debit_str else None
-            credit_amt = _extract_amount(credit_str) if credit_str else None
+            debit_amt = extract_amount(debit_str) if debit_str else None
+            credit_amt = extract_amount(credit_str) if credit_str else None
 
             if debit_amt:
                 direction = "debit"
@@ -313,7 +279,7 @@ class IdfcBankStatementParser(GenericBankStatementParser):
             else:
                 continue
 
-            balance = _extract_amount(_strip_cr(balance_str)) if balance_str else None
+            balance = extract_amount(_strip_cr(balance_str)) if balance_str else None
             channel = detect_channel(narr_raw)
             ref = extract_reference_number(narr_raw)
 
@@ -426,7 +392,7 @@ class IdfcBankStatementParser(GenericBankStatementParser):
                 return None
             # Date cell format: "01 Mar 26\n22:38"
             parts = date_cell.split("\n")
-            date_str = _parse_idfc_date(parts[0].strip())
+            date_str = parse_date_text(parts[0].strip(), format_hints=_IDFC_DATE_HINTS)
             # Time is in the second line (e.g., "22:38") but not used in output
         elif "merged" in cols:
             # Merged layout — try to find date in the cell text
@@ -437,7 +403,7 @@ class IdfcBankStatementParser(GenericBankStatementParser):
             m = re.search(r"(\d{2}\s+[A-Za-z]{3}\s+\d{2})", merged_cell)
             if not m:
                 return None
-            date_str = _parse_idfc_date(m.group(1))
+            date_str = parse_date_text(m.group(1), format_hints=_IDFC_DATE_HINTS)
 
         if not date_str:
             # Check for special rows like "opening balance"
@@ -459,7 +425,7 @@ class IdfcBankStatementParser(GenericBankStatementParser):
         value_date = None
         if "value_date" in cols and cols["value_date"] < len(row):
             vd = str(row[cols["value_date"]] or "").strip()
-            value_date = _parse_idfc_date(vd)
+            value_date = parse_date_text(vd, format_hints=_IDFC_DATE_HINTS)
 
         # Amounts
         debit_str = ""
@@ -473,8 +439,8 @@ class IdfcBankStatementParser(GenericBankStatementParser):
         if "balance" in cols and cols["balance"] < len(row):
             balance_str = str(row[cols["balance"]] or "").strip()
 
-        debit_amt = _extract_amount(debit_str) if debit_str else None
-        credit_amt = _extract_amount(credit_str) if credit_str else None
+        debit_amt = extract_amount(debit_str) if debit_str else None
+        credit_amt = extract_amount(credit_str) if credit_str else None
 
         if debit_amt:
             direction = "debit"
@@ -485,7 +451,7 @@ class IdfcBankStatementParser(GenericBankStatementParser):
         else:
             return None
 
-        balance = _extract_amount(_strip_cr(balance_str)) if balance_str else None
+        balance = extract_amount(_strip_cr(balance_str)) if balance_str else None
         channel = detect_channel(narration)
         ref = extract_reference_number(narration)
 

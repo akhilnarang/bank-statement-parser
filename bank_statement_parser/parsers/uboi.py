@@ -12,18 +12,17 @@ UBOI bank statements have a clean 7-column table:
 from __future__ import annotations
 
 import re
-from decimal import Decimal
 from typing import Any
 
 from bank_statement_parser.models import BankTransaction, ParsedBankStatement
-from bank_statement_parser.parsers.generic import (
-    GenericBankStatementParser,
-    _build_reconciliation,
-    _extract_amount,
+from bank_statement_parser.parsers.generic import GenericBankStatementParser
+from bank_statement_parser.parsers.metadata import MetadataExtractor
+from bank_statement_parser.parsers.reconciliation import build_reconciliation
+from bank_statement_parser.parsers.utils import (
     detect_channel,
+    extract_amount,
     extract_reference_number,
-    format_amount,
-    parse_amount,
+    parse_date_text,
 )
 
 _ACCOUNT_RE = re.compile(
@@ -39,13 +38,21 @@ _NAME_RE = re.compile(
 )
 
 
-def _parse_uboi_date(raw: str) -> str | None:
-    """Parse DD-MM-YYYY into DD/MM/YYYY."""
-    raw = raw.strip()
-    m = re.fullmatch(r"(\d{2})-(\d{2})-(\d{4})", raw)
-    if m:
-        return f"{m.group(1)}/{m.group(2)}/{m.group(3)}"
-    return None
+class UboiMetadataExtractor(MetadataExtractor):
+    account_number_pattern = _ACCOUNT_RE
+    period_pattern = _PERIOD_RE
+    name_pattern = _NAME_RE
+    opening_balance_pattern = None
+    closing_balance_pattern = None
+
+    def extract_period(self, full_text: str) -> tuple[str | None, str | None]:
+        match = self.period_pattern.search(full_text) if self.period_pattern else None
+        if not match:
+            return None, None
+        return (
+            parse_date_text(match.group(1), format_hints=["%d-%m-%Y"]),
+            parse_date_text(match.group(2), format_hints=["%d-%m-%Y"]),
+        )
 
 
 def _strip_cr(balance: str) -> str:
@@ -57,6 +64,7 @@ class UboiBankStatementParser(GenericBankStatementParser):
     """Parser for Union Bank of India savings/current account statements."""
 
     bank = "uboi"
+    metadata_extractor = UboiMetadataExtractor()
 
     def parse(self, raw_data: dict[str, Any]) -> ParsedBankStatement:
         pages = raw_data.get("pages", [])
@@ -66,10 +74,7 @@ class UboiBankStatementParser(GenericBankStatementParser):
             str(page.get("text", "")) for page in pages if isinstance(page, dict)
         )
 
-        # Metadata
-        account_number = self._extract_account_number(full_text)
-        holder_name = self._extract_name(full_text)
-        period_start, period_end = self._extract_period(full_text)
+        metadata = self.metadata_extractor.extract(full_text)
 
         # Transactions from tables
         transactions: list[BankTransaction] = []
@@ -87,62 +92,29 @@ class UboiBankStatementParser(GenericBankStatementParser):
                 if cb is not None:
                     closing_balance = cb
 
-        # Assign IDs
-        for i, txn in enumerate(transactions):
-            txn.transaction_id = f"uboi_txn_{i:04d}"
+        transactions = self._post_process(transactions, raw_data)
 
         # If we didn't find closing from summary, try last transaction
         if not closing_balance and transactions:
             closing_balance = transactions[-1].balance
 
-        # Compute totals
-        debit_total = Decimal("0")
-        credit_total = Decimal("0")
-        for txn in transactions:
-            amt = parse_amount(txn.amount)
-            if txn.transaction_type == "debit":
-                debit_total += amt
-            else:
-                credit_total += amt
-
-        reconciliation = _build_reconciliation(
+        reconciliation = build_reconciliation(
             transactions,
             opening_balance,
             closing_balance,
         )
 
-        return ParsedBankStatement(
-            file=file_name,
-            bank=self.bank,
-            account_holder_name=holder_name,
-            account_number=account_number,
-            statement_period_start=period_start,
-            statement_period_end=period_end,
+        return self._build_statement(
+            file_name=file_name,
+            transactions=transactions,
+            account_holder_name=metadata["account_holder_name"],
+            account_number=metadata["account_number"],
+            statement_period_start=metadata["period_start"],
+            statement_period_end=metadata["period_end"],
             opening_balance=opening_balance,
             closing_balance=closing_balance,
-            debit_count=sum(1 for t in transactions if t.transaction_type == "debit"),
-            credit_count=sum(1 for t in transactions if t.transaction_type == "credit"),
-            debit_total=format_amount(debit_total),
-            credit_total=format_amount(credit_total),
-            transactions=transactions,
             reconciliation=reconciliation,
         )
-
-    def _extract_account_number(self, text: str) -> str | None:
-        m = _ACCOUNT_RE.search(text)
-        return m.group(1) if m else None
-
-    def _extract_name(self, text: str) -> str | None:
-        m = _NAME_RE.search(text)
-        if m:
-            return m.group(1).strip()
-        return None
-
-    def _extract_period(self, text: str) -> tuple[str | None, str | None]:
-        m = _PERIOD_RE.search(text)
-        if not m:
-            return None, None
-        return _parse_uboi_date(m.group(1)), _parse_uboi_date(m.group(2))
 
     def _parse_uboi_table(
         self,
@@ -210,14 +182,14 @@ class UboiBankStatementParser(GenericBankStatementParser):
                 # Extract opening balance — scan cells right-to-left for first amount
                 for cell in reversed(row):
                     cell_str = _strip_cr(str(cell or "").strip())
-                    if amt := _extract_amount(cell_str):
+                    if amt := extract_amount(cell_str):
                         opening_balance = amt
                         break
                 continue
 
             if "CLOSING BALANCE" in row_text:
                 last_cell = str(row[-1] or "").strip()
-                if _extract_amount(_strip_cr(last_cell)):
+                if extract_amount(_strip_cr(last_cell)):
                     closing_balance = _strip_cr(last_cell)
                 continue
 
@@ -231,11 +203,11 @@ class UboiBankStatementParser(GenericBankStatementParser):
                     cell_str = str(cell or "").strip()
                     if "Opening Balance" in cell_str and ci + 1 < len(row):
                         ob_str = str(row[ci + 1] or "").strip()
-                        if _extract_amount(_strip_cr(ob_str)):
+                        if extract_amount(_strip_cr(ob_str)):
                             opening_balance = _strip_cr(ob_str)
                     if "Closing Balance" in cell_str and ci + 1 < len(row):
                         cb_str = str(row[ci + 1] or "").strip()
-                        if _extract_amount(_strip_cr(cb_str)):
+                        if extract_amount(_strip_cr(cb_str)):
                             closing_balance = _strip_cr(cb_str)
                 continue
 
@@ -245,7 +217,7 @@ class UboiBankStatementParser(GenericBankStatementParser):
                 if "date" in cols and cols["date"] < len(row)
                 else ""
             )
-            date = _parse_uboi_date(date_cell)
+            date = parse_date_text(date_cell, format_hints=["%d-%m-%Y"])
             if not date:
                 continue
 
@@ -269,8 +241,8 @@ class UboiBankStatementParser(GenericBankStatementParser):
                 else ""
             )
 
-            debit_amt = _extract_amount(debit_str) if debit_str else None
-            credit_amt = _extract_amount(credit_str) if credit_str else None
+            debit_amt = extract_amount(debit_str) if debit_str else None
+            credit_amt = extract_amount(credit_str) if credit_str else None
 
             if debit_amt:
                 direction = "debit"
@@ -281,7 +253,7 @@ class UboiBankStatementParser(GenericBankStatementParser):
             else:
                 continue
 
-            balance = _extract_amount(_strip_cr(balance_str)) if balance_str else None
+            balance = extract_amount(_strip_cr(balance_str)) if balance_str else None
             channel = detect_channel(narration)
             ref = extract_reference_number(narration)
 

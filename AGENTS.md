@@ -19,13 +19,19 @@ Primary goals:
 - `bank_statement_parser/extractor.py` — bank-agnostic raw PDF extraction (encryption detection/decryption, page text/words/tables/blocks, metadata).
 - `bank_statement_parser/models.py` — Pydantic models: `ParsedBankStatement`, `BankTransaction`, `BankReconciliation`.
 - `bank_statement_parser/parsers/base.py` — `BankStatementParser` abstract base.
-- `bank_statement_parser/parsers/factory.py` — explicit bank dispatch (no auto-detection — caller passes the bank).
-- `bank_statement_parser/parsers/generic.py` — shared utilities: `_extract_amount`, `detect_channel`, `extract_reference_number`, `parse_amount`, `format_amount`, `_build_reconciliation`, `group_words_into_lines`.
+- `bank_statement_parser/parsers/registry.py` — canonical parser registry keyed by bank slug.
+- `bank_statement_parser/parsers/factory.py` — compatibility wrapper around the registry (no auto-detection — caller passes the bank).
+- `bank_statement_parser/parsers/generic.py` — thin orchestrator plus compatibility re-exports for moved helpers.
+- `bank_statement_parser/parsers/metadata.py` — shared regex metadata extraction with per-bank overrides.
+- `bank_statement_parser/parsers/reconciliation.py` — shared reconciliation and transaction ID helpers.
+- `bank_statement_parser/parsers/extractors/` — shared table / word-line / x-position helpers.
+- `bank_statement_parser/parsers/utils/` — shared dates, amounts, channel/reference helpers.
 - `bank_statement_parser/parsers/{bank}.py` — bank-specific parsers for HDFC, ICICI, IDFC, IndusInd, Slice, UBOI.
 
 ## Parser Contract
 
 All parsers extend `GenericBankStatementParser` and override `parse(raw_data) -> ParsedBankStatement`.
+Safe shared post-processing lives on `BankStatementParser._post_process()`; it currently assigns deterministic `transaction_id` values without changing parser-specific extraction logic.
 
 Required fields on `ParsedBankStatement`:
 - `file`, `bank`, `account_holder_name`, `account_number`
@@ -73,6 +79,7 @@ When modifying parser logic:
 3. Validate with `-vvv` output and verify `balance_delta == "0.00"`.
 4. Update `README.md` when behavior changes.
 5. Run `uv run ruff check bank_statement_parser/`.
+6. Run `uv run ty check bank_statement_parser/`.
 
 ## Adding New Bank Parsers
 
@@ -80,7 +87,7 @@ Follow the skill at `.agents/skills/add-bank-parser/SKILL.md`. The skill walks t
 1. Studying the codebase
 2. Extracting raw PDF data (mandatory — do not guess from visual layout)
 3. Writing the parser (extending `GenericBankStatementParser`)
-4. Registering in `factory.py` and `cli.py`
+4. Registering in `parsers/registry.py` (factory/CLI compatibility stays in sync from there)
 5. Testing for `balance_delta == "0.00"`
 
 ## Coding Conventions
@@ -89,6 +96,9 @@ Follow the skill at `.agents/skills/add-bank-parser/SKILL.md`. The skill walks t
 - Add docstrings with `Args` and `Returns` for non-trivial functions.
 - Prefer pure helper functions for parsing steps.
 - Keep CLI presentation logic out of parser core logic.
+- Use `parsers/utils/dates.py` for shared date parsing; downstream date strings must remain `DD/MM/YYYY`.
+- Use `parsers/extractors/positioning.py::ColumnThresholds` for word-positioned layouts instead of scattering raw x-threshold numbers.
+- Python 3.14 / PEP 758 syntax is allowed here; do not "fix" `except E1, E2:` forms just for style.
 
 ## Non-Goals
 
@@ -104,6 +114,7 @@ Follow the skill at `.agents/skills/add-bank-parser/SKILL.md`. The skill walks t
 - **Date format is DD/MM/YYYY**: consumers parse with `strptime(date, "%d/%m/%Y")`.
 - **Amount strings are comma-separated**: expects `"25,000.00"`, strips commas to convert to Decimal.
 - **Bank name is the explicit input**: `get_parser(bank)` — the output model includes the bank slug as-received.
+- **Compatibility shims matter**: `extract_raw_pdf`, `parsers.factory.get_parser`, CLI UX, and commonly imported helpers from `parsers.generic` must keep working while internals move.
 
 ## Known Limitations
 

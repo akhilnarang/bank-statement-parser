@@ -13,8 +13,9 @@ Arguments: `$ARGUMENTS` — bank slug and path to sample PDF.
 
 Read these files to understand the patterns:
 - `bank_statement_parser/models.py` — output schema (see Output Schema section below)
-- `bank_statement_parser/parsers/generic.py` — reusable utilities you must use
-- `bank_statement_parser/parsers/factory.py` — how parsers are registered
+- `bank_statement_parser/parsers/generic.py` — compatibility re-exports and the generic parser flow
+- `bank_statement_parser/parsers/registry.py` — canonical parser registration
+- `bank_statement_parser/parsers/utils/` and `bank_statement_parser/parsers/extractors/` — reusable helpers you should prefer
 
 Don't read a specific parser yet — wait until step 2 reveals whether the PDF uses tables or word-positioned text, then pick the most relevant existing parser to study.
 
@@ -34,11 +35,11 @@ Then examine the output **interactively** — this may take multiple rounds:
 
 1. **Print all tables on all pages** (every row, not just the first few). Determine which table has transactions, the column count, and header names.
 2. **Print page 1 text** (first ~800 chars) to find metadata patterns (account number, holder name, statement period).
-3. **If tables are empty or single-row**, the bank renders transactions as positioned text, not tables. Print word-lines instead:
-   ```python
-   from bank_statement_parser.parsers.generic import group_words_into_lines
-   lines = group_words_into_lines(raw["pages"][N]["words"])
-   ```
+   3. **If tables are empty or single-row**, the bank renders transactions as positioned text, not tables. Print word-lines instead:
+    ```python
+    from bank_statement_parser.parsers.extractors.wordlines import group_words_into_lines
+    lines = group_words_into_lines(raw["pages"][N]["words"])
+    ```
 4. **For word-line parsing**, print x-positions (`w["x0"]`) of the header line and a few data lines to determine column boundaries.
 
 If the PDF is encrypted, ask the user for the password.
@@ -55,12 +56,14 @@ Create `bank_statement_parser/parsers/{bank}.py`. Base your implementation on th
 
 - Extend `GenericBankStatementParser`, override `parse()`
 - Follow the structure of the existing parser you studied
-- Use utilities from `generic.py` — don't reimplement `_extract_amount()`, `detect_channel()`, `extract_reference_number()`, `parse_amount()`, `format_amount()`, `_build_reconciliation()`
+- Prefer shared helpers from `parsers/utils/`, `parsers/extractors/`, `parsers/metadata.py`, and `parsers/reconciliation.py`
+- Keep `parsers/generic.py` compatibility imports working; it re-exports the common helpers if you need the old import path
+- Use `parsers/utils/dates.py` for all date parsing; output must stay `DD/MM/YYYY`
 
 ## Step 4: Register
 
-- `parsers/factory.py`: import the class, add bank to `BankChoice` literal, add `case` in `get_parser()`
-- `cli.py`: add to `BankOption` enum
+- `parsers/registry.py`: import the class and add one registry entry
+- Keep CLI/factory compatibility intact; `factory.py` and the CLI already source supported banks from the registry
 
 ## Step 5: Test and iterate
 
@@ -74,6 +77,8 @@ Check:
 - [ ] Account number extracted
 - [ ] Statement period extracted
 - [ ] Narrations are clean (no date fragments or junk from merged cells)
+- [ ] `uv run ruff check bank_statement_parser/`
+- [ ] `uv run ty check bank_statement_parser/`
 
 If delta is not 0.00 or transactions are missing, go back to step 2 to examine the raw data more closely, fix the parser, and re-test. This is iterative.
 
@@ -136,11 +141,12 @@ BankReconciliation:
 - **Currency prefixes on amounts.** Some banks use ₹ or -₹ prefixes (Slice), "r" prefix (IDFC CC). Strip before extracting.
 - **Indian number format.** Lakhs grouping: "1,52,581.54". `_extract_amount()` handles this.
 - **Date format variety.** DD-MM-YYYY, DD/MM/YYYY, DD Mon YY, DD-MON-YYYY, DD Mon 'YY (apostrophe year). Always normalize output to DD/MM/YYYY.
+- **Shared date parser first.** Add any bank-specific format hints via `parsers/utils/dates.py`; do not create another bank-local `_parse_*_date`.
 - **Narration newlines.** PDF table cells contain `\n`. Replace with spaces.
 - **No auto-detection.** Bank name is always passed explicitly by the caller. Don't implement detection.
 - **Multi-page tables.** Reuse column mapping from the first header found.
 - **Channel detection gaps.** `detect_channel()` uses standard prefixes (UPI/, IMPS/, NEFT/). Some banks use non-standard prefixes. Add bank-specific detection if needed.
-- **x-position classification.** For word-line parsing, use header x-positions to set column thresholds. More robust than token counting.
+- **x-position classification.** For word-line parsing, use header x-positions to set `ColumnThresholds`. More robust than token counting.
 - **Debit/credit from amount sign.** Some banks (Slice) use -₹ for debits and ₹ for credits rather than separate columns.
 - **Packed single-row tables.** Some banks (HDFC) render the entire transaction list as ONE table row where each cell contains all values joined by `\n` (e.g., cell[0] = "01 Mar 26\n02 Mar 26\n03 Mar 26\n..."). Split each cell on `\n` and align by index. Narrations span multiple lines and typically end with a marker like "Value Dt DD/MM/YYYY" — use this to split the joined narration back into per-transaction strings.
 - **Summary rows that look like data rows.** If multiple tables contain amount rows (e.g., a balance summary table on page 1), make sure your summary-balance regex/anchor is specific enough to avoid matching the wrong one. Anchor on labeled header text like "Opening Balance" rather than just "4 amounts in a row".

@@ -6,48 +6,14 @@ because bank statement narrations routinely mention other banks (UPI via
 HDFC, NEFT from ICICI, etc.) making heuristic detection unreliable.
 """
 
-from typing import Literal
-
 from bank_statement_parser.parsers.base import BankStatementParser
-from bank_statement_parser.parsers.hdfc import HdfcBankStatementParser
-from bank_statement_parser.parsers.icici import IciciBankStatementParser
-from bank_statement_parser.parsers.idfc import IdfcBankStatementParser
-from bank_statement_parser.parsers.indusind import IndusindBankStatementParser
-from bank_statement_parser.parsers.kotak import KotakBankStatementParser
-from bank_statement_parser.parsers.slice import SliceBankStatementParser
-from bank_statement_parser.parsers.uboi import UboiBankStatementParser
-
-type BankChoice = Literal[
-    "hdfc",
-    "icici",
-    "idfc",
-    "indusind",
-    "kotak",
-    "slice",
-    "uboi",
-]
+from bank_statement_parser.parsers.registry import create_parser
 
 
-def get_parser(bank: BankChoice) -> BankStatementParser:
+def get_parser(bank: str) -> BankStatementParser:
     """Return parser instance for the given bank.
 
     Args:
         bank: Bank slug. Must be explicit — no auto-detection.
     """
-    match bank:
-        case "hdfc":
-            return HdfcBankStatementParser()
-        case "icici":
-            return IciciBankStatementParser()
-        case "idfc":
-            return IdfcBankStatementParser()
-        case "kotak":
-            return KotakBankStatementParser()
-        case "slice":
-            return SliceBankStatementParser()
-        case "uboi":
-            return UboiBankStatementParser()
-        case "indusind":
-            return IndusindBankStatementParser()
-        case _:
-            raise ValueError(f"Unsupported bank: {bank}")
+    return create_parser(bank)

@@ -20,19 +20,17 @@ HDFC bank statements have a highly compressed table layout:
 from __future__ import annotations
 
 import re
-from decimal import Decimal
 from typing import Any
 
 from bank_statement_parser.models import BankTransaction, ParsedBankStatement
-from bank_statement_parser.parsers.generic import (
-    GenericBankStatementParser,
-    _build_reconciliation,
-    _extract_amount,
+from bank_statement_parser.parsers.generic import GenericBankStatementParser
+from bank_statement_parser.parsers.reconciliation import build_reconciliation
+from bank_statement_parser.parsers.utils import (
     detect_channel,
+    extract_amount,
     extract_reference_number,
-    format_amount,
-    normalize_date,
     parse_amount,
+    parse_date_text,
 )
 
 # ---------------------------------------------------------------------------
@@ -98,7 +96,7 @@ def _extract_value_date(narration: str) -> str | None:
     """Extract value date from narration's 'Value Dt DD/MM/YYYY' marker."""
     m = re.search(r"Value\s+Dt\s+(\d{2}/\d{2}/\d{4})", narration)
     if m:
-        return normalize_date(m.group(1))
+        return parse_date_text(m.group(1))
     return None
 
 
@@ -137,10 +135,7 @@ class HdfcBankStatementParser(GenericBankStatementParser):
 
         # Transactions
         transactions = self._extract_hdfc_transactions(pages)
-
-        # Assign transaction IDs
-        for i, txn in enumerate(transactions):
-            txn.transaction_id = f"hdfc_txn_{i:04d}"
+        transactions = self._post_process(transactions, raw_data)
 
         # Fallback: use last transaction's balance as closing balance
         if not closing_balance and transactions:
@@ -148,40 +143,21 @@ class HdfcBankStatementParser(GenericBankStatementParser):
             if last_bal:
                 closing_balance = last_bal
 
-        # Compute totals
-        debit_total = Decimal("0")
-        credit_total = Decimal("0")
-        debit_count = 0
-        credit_count = 0
-        for txn in transactions:
-            amt = parse_amount(txn.amount)
-            if txn.transaction_type == "debit":
-                debit_total += amt
-                debit_count += 1
-            else:
-                credit_total += amt
-                credit_count += 1
-
-        reconciliation = _build_reconciliation(
+        reconciliation = build_reconciliation(
             transactions,
             opening_balance,
             closing_balance,
         )
 
-        return ParsedBankStatement(
-            file=file_name,
-            bank=self.bank,
+        return self._build_statement(
+            file_name=file_name,
+            transactions=transactions,
             account_holder_name=holder_name,
             account_number=account_number,
             statement_period_start=period_start,
             statement_period_end=period_end,
             opening_balance=opening_balance,
             closing_balance=closing_balance,
-            debit_count=debit_count,
-            credit_count=credit_count,
-            debit_total=format_amount(debit_total),
-            credit_total=format_amount(credit_total),
-            transactions=transactions,
             reconciliation=reconciliation,
         )
 
@@ -211,7 +187,7 @@ class HdfcBankStatementParser(GenericBankStatementParser):
     def _extract_period(self, text: str) -> tuple[str | None, str | None]:
         m = _PERIOD_RE.search(text)
         if m:
-            return normalize_date(m.group(1)), normalize_date(m.group(2))
+            return parse_date_text(m.group(1)), parse_date_text(m.group(2))
         return None, None
 
     def _extract_opening_balance(self, text: str) -> str | None:
@@ -295,7 +271,7 @@ class HdfcBankStatementParser(GenericBankStatementParser):
             return txns
 
         for i in range(n):
-            date = normalize_date(dates[i])
+            date = parse_date_text(dates[i])
             if not date:
                 continue
 
@@ -303,9 +279,9 @@ class HdfcBankStatementParser(GenericBankStatementParser):
             value_date = _extract_value_date(narration_full)
             narration = _clean_narration(narration_full)
 
-            wd_amt = _extract_amount(withdrawals[i])
-            dep_amt = _extract_amount(deposits[i])
-            bal_amt = _extract_amount(balances[i])
+            wd_amt = extract_amount(withdrawals[i])
+            dep_amt = extract_amount(deposits[i])
+            bal_amt = extract_amount(balances[i])
 
             # Classify: HDFC uses 0.00 for the non-applicable side
             if wd_amt and parse_amount(wd_amt) > 0:

@@ -19,20 +19,20 @@ Slice bank statements have:
 from __future__ import annotations
 
 import re
-from decimal import Decimal
 from typing import Any
 
 from bank_statement_parser.models import BankTransaction, ParsedBankStatement
-from bank_statement_parser.parsers.generic import (
-    MONTH_ABBREVS,
-    GenericBankStatementParser,
-    _build_reconciliation,
-    _extract_amount,
-    detect_channel,
-    extract_reference_number,
-    format_amount,
+from bank_statement_parser.parsers.extractors import (
+    ColumnThresholds,
     group_words_into_lines,
-    parse_amount,
+)
+from bank_statement_parser.parsers.generic import GenericBankStatementParser
+from bank_statement_parser.parsers.reconciliation import build_reconciliation
+from bank_statement_parser.parsers.utils import (
+    detect_channel,
+    extract_amount,
+    extract_reference_number,
+    parse_date_text,
 )
 
 # Regex patterns for metadata extraction
@@ -46,23 +46,12 @@ _SUMMARY_AMOUNTS_RE = re.compile(
     r"₹([\d,]+\.\d{2})\s+₹([\d,]+\.\d{2})\s+₹([\d,]+\.\d{2})\s+₹([\d,]+\.\d{2})\s+₹([\d,]+\.\d{2})"
 )
 
-# x-position thresholds (from word-position analysis)
-_X_DATE_MAX = 75.0  # date tokens (DD Mon 'YY) are all < 75
-_X_REF_MIN = 270.0  # ref number starts at ~284
-_X_AMOUNT_MIN = 410.0  # amount column starts ~420
-_X_BALANCE_MIN = 505.0  # balance column starts ~515
-
-
-def _parse_slice_date(d: str, m: str, y: str) -> str | None:
-    """Parse Slice date tokens DD, Mon, 'YY into DD/MM/YYYY."""
-    month = MONTH_ABBREVS.get(m.upper()[:3])
-    if not month:
-        return None
-    year = y.lstrip("'")
-    if len(year) == 2:
-        year = f"20{year}"
-    day = d.zfill(2)
-    return f"{day}/{month}/{year}"
+_THRESHOLDS = ColumnThresholds(
+    date_max=40.0,
+    ref_min=270.0,
+    amount_min=410.0,
+    balance_min=505.0,
+)
 
 
 def _strip_rupee(token: str) -> tuple[str | None, bool]:
@@ -72,10 +61,10 @@ def _strip_rupee(token: str) -> tuple[str | None, bool]:
     """
     token = token.strip()
     if token.startswith("-₹"):
-        amt = _extract_amount(token[2:])
+        amt = extract_amount(token[2:])
         return amt, True
     if token.startswith("₹"):
-        amt = _extract_amount(token[1:])
+        amt = extract_amount(token[1:])
         return amt, False
     return None, False
 
@@ -99,9 +88,7 @@ class SliceBankStatementParser(GenericBankStatementParser):
         opening_balance, closing_balance = self._extract_balances(full_text)
 
         transactions = self._extract_slice_transactions(pages)
-
-        for i, txn in enumerate(transactions):
-            txn.transaction_id = f"slice_txn_{i:04d}"
+        transactions = self._post_process(transactions, raw_data)
 
         if not closing_balance and transactions:
             last_bal = transactions[-1].balance
@@ -113,35 +100,21 @@ class SliceBankStatementParser(GenericBankStatementParser):
         if not period_end and transactions:
             period_end = transactions[-1].date
 
-        debit_total = Decimal("0")
-        credit_total = Decimal("0")
-        for txn in transactions:
-            amt = parse_amount(txn.amount)
-            if txn.transaction_type == "debit":
-                debit_total += amt
-            else:
-                credit_total += amt
-
-        reconciliation = _build_reconciliation(
+        reconciliation = build_reconciliation(
             transactions,
             opening_balance,
             closing_balance,
         )
 
-        return ParsedBankStatement(
-            file=file_name,
-            bank=self.bank,
+        return self._build_statement(
+            file_name=file_name,
+            transactions=transactions,
             account_holder_name=holder_name,
             account_number=account_number,
             statement_period_start=period_start,
             statement_period_end=period_end,
             opening_balance=opening_balance,
             closing_balance=closing_balance,
-            debit_count=sum(1 for t in transactions if t.transaction_type == "debit"),
-            credit_count=sum(1 for t in transactions if t.transaction_type == "credit"),
-            debit_total=format_amount(debit_total),
-            credit_total=format_amount(credit_total),
-            transactions=transactions,
             reconciliation=reconciliation,
         )
 
@@ -166,8 +139,14 @@ class SliceBankStatementParser(GenericBankStatementParser):
         m = _PERIOD_RE.search(text)
         if not m:
             return None, None
-        start = _parse_slice_date(m.group(1), m.group(2), m.group(3))
-        end = _parse_slice_date(m.group(4), m.group(5), m.group(6))
+        start = parse_date_text(
+            f"{m.group(1)} {m.group(2)} {m.group(3)}",
+            format_hints=["%d %b %y"],
+        )
+        end = parse_date_text(
+            f"{m.group(4)} {m.group(5)} {m.group(6)}",
+            format_hints=["%d %b %y"],
+        )
         return start, end
 
     def _extract_balances(self, text: str) -> tuple[str | None, str | None]:
@@ -272,7 +251,8 @@ class SliceBankStatementParser(GenericBankStatementParser):
 
             # Date lines: first token is a 1-2 digit day number at x < 40
             is_date_line = (
-                first_x < 40.0
+                _THRESHOLDS.date_max is not None
+                and first_x < _THRESHOLDS.date_max
                 and re.fullmatch(r"\d{1,2}", toks[0]["text"])
                 and len(toks) >= 3
                 and re.fullmatch(r"[A-Za-z]{3}", toks[1]["text"])
@@ -283,8 +263,9 @@ class SliceBankStatementParser(GenericBankStatementParser):
                 # Flush previous pending transaction
                 flush()
 
-                date_str = _parse_slice_date(
-                    toks[0]["text"], toks[1]["text"], toks[2]["text"]
+                date_str = parse_date_text(
+                    f"{toks[0]['text']} {toks[1]['text']} {toks[2]['text']}",
+                    format_hints=["%d %b %y"],
                 )
                 if not date_str:
                     continue
@@ -295,7 +276,7 @@ class SliceBankStatementParser(GenericBankStatementParser):
                 rest = toks[3:]
 
                 # Split rest by column position:
-                # narration words (x < _X_REF_MIN), ref (x ~284), amount, balance
+                # narration words, ref column, amount column, balance column
                 narr_words: list[str] = []
                 ref_words: list[str] = []
                 amount_str: str | None = None
@@ -306,19 +287,25 @@ class SliceBankStatementParser(GenericBankStatementParser):
                     x = float(w["x0"])
                     text = w["text"]
 
-                    if x >= _X_BALANCE_MIN:
+                    if (
+                        _THRESHOLDS.balance_min is not None
+                        and x >= _THRESHOLDS.balance_min
+                    ):
                         # Balance column
                         amt, _ = _strip_rupee(text)
                         if amt:
                             balance_str = amt
                         # else might be continuation of balance text (rare)
-                    elif x >= _X_AMOUNT_MIN:
+                    elif (
+                        _THRESHOLDS.amount_min is not None
+                        and x >= _THRESHOLDS.amount_min
+                    ):
                         # Amount column
                         amt, debit_flag = _strip_rupee(text)
                         if amt:
                             amount_str = amt
                             is_debit = debit_flag
-                    elif x >= _X_REF_MIN:
+                    elif _THRESHOLDS.ref_min is not None and x >= _THRESHOLDS.ref_min:
                         # Ref number column
                         ref_words.append(text)
                     else:
@@ -354,7 +341,11 @@ class SliceBankStatementParser(GenericBankStatementParser):
 
                 # Narration continuation — only if we have a pending transaction
                 # and the line starts at narration x position
-                if pending_date is not None and first_x < _X_REF_MIN:
+                if (
+                    pending_date is not None
+                    and _THRESHOLDS.ref_min is not None
+                    and first_x < _THRESHOLDS.ref_min
+                ):
                     pending_narr_parts.append(line_text.strip())
 
         # Flush the last pending transaction

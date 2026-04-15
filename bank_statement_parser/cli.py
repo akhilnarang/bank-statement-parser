@@ -22,6 +22,9 @@ from rich.table import Table
 from bank_statement_parser.extractor import extract_raw_pdf, is_pdf_encrypted
 from bank_statement_parser.models import ParsedBankStatement
 from bank_statement_parser.parsers.factory import get_parser
+from bank_statement_parser.parsers.registry import get_supported_bank_slugs
+
+_SUPPORTED_BANK_SLUGS = get_supported_bank_slugs()
 
 
 class BankOption(StrEnum):
@@ -32,6 +35,10 @@ class BankOption(StrEnum):
     kotak = "kotak"
     slice = "slice"
     uboi = "uboi"
+
+
+if tuple(option.value for option in BankOption) != _SUPPORTED_BANK_SLUGS:
+    raise RuntimeError("BankOption enum is out of sync with parser registry")
 
 
 def write_transactions_csv(parsed: ParsedBankStatement, output_path: Path) -> None:

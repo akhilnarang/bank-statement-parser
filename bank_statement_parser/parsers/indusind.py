@@ -21,31 +21,20 @@ Metadata:
 from __future__ import annotations
 
 import re
-from decimal import Decimal
 from typing import Any
 
 from bank_statement_parser.models import (
     BankTransaction,
     ParsedBankStatement,
 )
-from bank_statement_parser.parsers.generic import (
-    GenericBankStatementParser,
-    _assign_transaction_ids,
-    _build_reconciliation,
-    _extract_amount,
+from bank_statement_parser.parsers.generic import GenericBankStatementParser
+from bank_statement_parser.parsers.metadata import MetadataExtractor
+from bank_statement_parser.parsers.reconciliation import build_reconciliation
+from bank_statement_parser.parsers.utils import (
     detect_channel,
+    extract_amount,
     extract_reference_number,
-    format_amount,
-    parse_amount,
-    MONTH_ABBREVS,
-)
-
-# ---------------------------------------------------------------------------
-# Date parsing for IndusInd format: DD-Mon-YYYY (e.g., 01-Jan-2026)
-# ---------------------------------------------------------------------------
-
-_INDUSIND_DATE_RE = re.compile(
-    r"^(\d{2})-([A-Za-z]{3})-(\d{4})$",
+    parse_date_text,
 )
 
 # Metadata patterns
@@ -71,25 +60,28 @@ _SKIP_KEYWORDS = {
 }
 
 
-def _parse_indusind_date(token: str) -> str | None:
-    """Parse DD-Mon-YYYY date into DD/MM/YYYY format."""
-    if not token:
-        return None
-    token = token.strip()
-    m = _INDUSIND_DATE_RE.fullmatch(token)
-    if not m:
-        return None
-    day, month_str, year = m.group(1), m.group(2), m.group(3)
-    month_num = MONTH_ABBREVS.get(month_str.upper()[:3])
-    if month_num is None:
-        return None
-    return f"{day}/{month_num}/{year}"
+class IndusindMetadataExtractor(MetadataExtractor):
+    account_number_pattern = _ACCOUNT_NUMBER_RE
+    period_pattern = _PERIOD_RE
+    name_pattern = _NAME_RE
+    opening_balance_pattern = None
+    closing_balance_pattern = None
+
+    def extract_period(self, full_text: str) -> tuple[str | None, str | None]:
+        match = self.period_pattern.search(full_text) if self.period_pattern else None
+        if not match:
+            return None, None
+        return (
+            parse_date_text(match.group(1), format_hints=["%d-%b-%Y"]),
+            parse_date_text(match.group(2), format_hints=["%d-%b-%Y"]),
+        )
 
 
 class IndusindBankStatementParser(GenericBankStatementParser):
     """Parser for IndusInd Bank savings/current account statements."""
 
     bank = "indusind"
+    metadata_extractor = IndusindMetadataExtractor()
 
     def parse(self, raw_data: dict[str, Any]) -> ParsedBankStatement:
         """Parse IndusInd Bank statement PDF."""
@@ -101,8 +93,7 @@ class IndusindBankStatementParser(GenericBankStatementParser):
             str(page.get("text", "")) for page in pages if isinstance(page, dict)
         )
 
-        # Extract metadata
-        meta = self._extract_indusind_metadata(full_text)
+        meta = self.metadata_extractor.extract(full_text)
 
         # Extract opening/closing balance from Brought Forward / Carried Forward rows
         opening_balance, closing_balance = self._extract_indusind_opening_closing(pages)
@@ -115,81 +106,25 @@ class IndusindBankStatementParser(GenericBankStatementParser):
 
         # Extract transactions from tables
         transactions = self._extract_indusind_transactions(pages)
+        transactions = self._post_process(transactions, raw_data)
 
-        _assign_transaction_ids(transactions, self.bank)
-
-        # Compute totals
-        debit_total = Decimal("0")
-        credit_total = Decimal("0")
-        debit_count = 0
-        credit_count = 0
-        for txn in transactions:
-            amt = parse_amount(txn.amount)
-            if txn.transaction_type == "debit":
-                debit_total += amt
-                debit_count += 1
-            else:
-                credit_total += amt
-                credit_count += 1
-
-        reconciliation = _build_reconciliation(
+        reconciliation = build_reconciliation(
             transactions,
             opening_balance,
             closing_balance,
         )
 
-        return ParsedBankStatement(
-            file=file_name,
-            bank=self.bank,
+        return self._build_statement(
+            file_name=file_name,
+            transactions=transactions,
             account_holder_name=meta["account_holder_name"],
             account_number=meta["account_number"],
             statement_period_start=meta["period_start"],
             statement_period_end=meta["period_end"],
             opening_balance=opening_balance,
             closing_balance=closing_balance,
-            debit_count=debit_count,
-            credit_count=credit_count,
-            debit_total=format_amount(debit_total),
-            credit_total=format_amount(credit_total),
-            transactions=transactions,
             reconciliation=reconciliation,
         )
-
-    # ------------------------------------------------------------------
-    # Metadata
-    # ------------------------------------------------------------------
-
-    def _extract_indusind_metadata(self, full_text: str) -> dict[str, str | None]:
-        """Extract IndusInd-specific metadata from statement text."""
-        meta: dict[str, str | None] = {
-            "account_number": None,
-            "account_holder_name": None,
-            "period_start": None,
-            "period_end": None,
-            "opening_balance": None,
-            "closing_balance": None,
-        }
-
-        # Account number
-        m = _ACCOUNT_NUMBER_RE.search(full_text)
-        if m:
-            meta["account_number"] = re.sub(r"\s+", "", m.group(1))
-
-        # Period: "Statement Period : 01-Jan-2026 TO 31-Mar-2026"
-        m = _PERIOD_RE.search(full_text)
-        if m:
-            meta["period_start"] = _parse_indusind_date(m.group(1))
-            meta["period_end"] = _parse_indusind_date(m.group(2))
-
-        # Account holder name
-        m = _NAME_RE.search(full_text)
-        if m:
-            name = m.group(1).strip()
-            name = re.split(r"\s{2,}|\n", name)[0].strip()
-            if name:
-                meta["account_holder_name"] = name
-
-        return meta
 
     # ------------------------------------------------------------------
     # Opening / Closing balance from table rows
@@ -215,13 +150,13 @@ class IndusindBankStatementParser(GenericBankStatementParser):
                     if "brought forward" in row_text:
                         # Balance is in the last non-empty column
                         for cell in reversed(row):
-                            amt = _extract_amount(str(cell or ""))
+                            amt = extract_amount(str(cell or ""))
                             if amt:
                                 opening = amt
                                 break
                     elif "carried forward" in row_text:
                         for cell in reversed(row):
-                            amt = _extract_amount(str(cell or ""))
+                            amt = extract_amount(str(cell or ""))
                             if amt:
                                 closing = amt
                                 break
@@ -332,7 +267,7 @@ class IndusindBankStatementParser(GenericBankStatementParser):
                 continue
 
             # Parse date — IndusInd uses DD-Mon-YYYY
-            date = _parse_indusind_date(date_cell)
+            date = parse_date_text(date_cell, format_hints=["%d-%b-%Y"])
             if not date:
                 continue
 
@@ -357,8 +292,8 @@ class IndusindBankStatementParser(GenericBankStatementParser):
                 str(row[cols.get("ref", -1)] or "").strip() if "ref" in cols else ""
             )
 
-            debit_amt = _extract_amount(debit_str)
-            credit_amt = _extract_amount(credit_str)
+            debit_amt = extract_amount(debit_str)
+            credit_amt = extract_amount(credit_str)
 
             if debit_amt:
                 direction = "debit"
@@ -374,7 +309,7 @@ class IndusindBankStatementParser(GenericBankStatementParser):
             if balance_str:
                 cleaned_bal = balance_str.strip()
                 is_negative = cleaned_bal.startswith("-")
-                bal_val = _extract_amount(
+                bal_val = extract_amount(
                     cleaned_bal.lstrip("-") if is_negative else cleaned_bal
                 )
                 if bal_val:
