@@ -281,7 +281,7 @@ class IdfcBankStatementParser(GenericBankStatementParser):
 
             balance = extract_amount(_strip_cr(balance_str)) if balance_str else None
             channel = detect_channel(narr_raw)
-            ref = extract_reference_number(narr_raw)
+            ref = extract_reference_number(narr_raw, channel)
 
             txns.append(
                 BankTransaction(
@@ -453,7 +453,7 @@ class IdfcBankStatementParser(GenericBankStatementParser):
 
         balance = extract_amount(_strip_cr(balance_str)) if balance_str else None
         channel = detect_channel(narration)
-        ref = extract_reference_number(narration)
+        ref = extract_reference_number(narration, channel)
 
         return BankTransaction(
             date=date_str,

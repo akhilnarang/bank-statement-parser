@@ -341,7 +341,7 @@ class KotakBankStatementParser(GenericBankStatementParser):
 
             balance = extract_amount(balance_str) if balance_str else None
             channel = detect_channel(narration)
-            ref = extract_reference_number(narration)
+            ref = extract_reference_number(narration, channel)
             if not ref and ref_cell:
                 ref = ref_cell
 

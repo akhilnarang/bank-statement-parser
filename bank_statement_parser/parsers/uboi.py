@@ -255,7 +255,7 @@ class UboiBankStatementParser(GenericBankStatementParser):
 
             balance = extract_amount(_strip_cr(balance_str)) if balance_str else None
             channel = detect_channel(narration)
-            ref = extract_reference_number(narration)
+            ref = extract_reference_number(narration, channel)
 
             # UBOI ref column
             if not ref and "ref" in cols and cols["ref"] < len(row):

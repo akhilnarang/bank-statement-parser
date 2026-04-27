@@ -115,6 +115,8 @@ def parse_table_transactions(
         else:
             continue
 
+        channel = detect_channel(narration)
+
         txns.append(
             BankTransaction(
                 date=date,
@@ -122,8 +124,8 @@ def parse_table_transactions(
                 amount=amount,
                 transaction_type=direction,
                 balance=extract_amount(balance_str) if balance_str else None,
-                reference_number=ref_str or extract_reference_number(narration),
-                channel=detect_channel(narration),
+                reference_number=ref_str or extract_reference_number(narration, channel),
+                channel=channel,
                 value_date=parse_date_text(value_date_str) if value_date_str else None,
             )
         )

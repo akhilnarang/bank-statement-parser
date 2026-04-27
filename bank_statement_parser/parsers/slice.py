@@ -221,7 +221,7 @@ class SliceBankStatementParser(GenericBankStatementParser):
             channel = detect_channel(narration)
             if not channel and narration.lower() == "bill payment":
                 channel = "upi"
-            ref = pending_ref or extract_reference_number(narration)
+            ref = pending_ref or extract_reference_number(narration, channel)
             direction: str = "debit" if pending_is_debit else "credit"
 
             txns.append(

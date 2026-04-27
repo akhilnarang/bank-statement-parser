@@ -282,7 +282,7 @@ class IciciBankStatementParser(GenericBankStatementParser):
 
             narration = " ".join(narration_parts).strip()
             channel = detect_channel(narration)
-            ref = extract_reference_number(narration)
+            ref = extract_reference_number(narration, channel)
 
             txns.append(
                 BankTransaction(

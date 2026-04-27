@@ -294,11 +294,11 @@ class HdfcBankStatementParser(GenericBankStatementParser):
                 # Both zero — skip this row
                 continue
 
+            channel = detect_channel(narration)
             ref = _NARR_REF_RE.search(narration_full)
             reference_number = (
-                ref.group(1) if ref else extract_reference_number(narration)
+                ref.group(1) if ref else extract_reference_number(narration, channel)
             )
-            channel = detect_channel(narration)
 
             txns.append(
                 BankTransaction(

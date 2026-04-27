@@ -117,6 +117,8 @@ def parse_lines_transactions(
                 direction = "debit"
 
             balance = balance_str if (len(amounts) >= 2 and balance_str) else None
+            channel = detect_channel(narration)
+
             txns.append(
                 BankTransaction(
                     date=date,
@@ -124,8 +126,8 @@ def parse_lines_transactions(
                     amount=amount,
                     transaction_type=direction,
                     balance=balance,
-                    reference_number=extract_reference_number(narration),
-                    channel=detect_channel(narration),
+                    reference_number=extract_reference_number(narration, channel),
+                    channel=channel,
                 )
             )
             if balance:
