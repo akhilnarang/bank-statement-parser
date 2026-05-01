@@ -17,6 +17,7 @@ class BankTransaction(BaseModel):
     balance: str | None = None
     reference_number: str | None = None
     channel: str | None = None
+    counterparty: str | None = None
     value_date: str | None = None
     transaction_id: str = ""
 

@@ -11,6 +11,7 @@ from bank_statement_parser.parsers.utils.channels import (
     detect_channel,
     extract_reference_number,
 )
+from bank_statement_parser.parsers.utils.counterparty import extract_counterparty
 from bank_statement_parser.parsers.utils.dates import (
     format_date,
     parse_date,
@@ -23,6 +24,7 @@ __all__ = [
     "MONTH_ABBREVS",
     "detect_channel",
     "extract_amount",
+    "extract_counterparty",
     "extract_reference_number",
     "format_amount",
     "format_date",

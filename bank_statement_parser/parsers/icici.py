@@ -32,6 +32,7 @@ from bank_statement_parser.parsers.reconciliation import build_reconciliation
 from bank_statement_parser.parsers.utils import (
     AMOUNT_RE,
     detect_channel,
+    extract_counterparty,
     extract_reference_number,
     parse_date_text,
 )
@@ -289,6 +290,7 @@ class IciciBankStatementParser(GenericBankStatementParser):
             narration = " ".join(narration_parts).strip()
             channel = detect_channel(narration)
             ref = extract_reference_number(narration, channel)
+            counterparty = extract_counterparty(narration, channel)
 
             txns.append(
                 BankTransaction(
@@ -299,6 +301,7 @@ class IciciBankStatementParser(GenericBankStatementParser):
                     balance=balance_amt,
                     reference_number=ref,
                     channel=channel,
+                    counterparty=counterparty,
                 )
             )
 

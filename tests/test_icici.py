@@ -199,3 +199,7 @@ def test_last_transaction_narration_does_not_absorb_post_txn_section() -> None:
     # And the legitimate narration content should still be present
     assert "PIZZA" in last.narration
     assert "PAY1234567890ABCD" in last.narration
+
+    # Counterparty must be the merchant segment, not the full UPI narration
+    assert last.counterparty == "PIZZA PLACE"
+    assert parsed.transactions[0].counterparty == "JOHN DOE"
