@@ -262,7 +262,13 @@ class IciciBankStatementParser(GenericBankStatementParser):
                     break  # Next transaction starts
                 next_joined = " ".join(next_tokens)
                 next_upper = next_joined.upper()
-                if any(kw in next_upper for kw in ("TOTAL:", "DATE", "PAGE")):
+                # `Total:` marks the end of the transactions section on an
+                # ICICI page; everything below (Account Related Other
+                # Information, nominee table, page footer) is metadata and
+                # must not be absorbed into the last transaction's narration.
+                if "TOTAL:" in next_upper:
+                    break
+                if any(kw in next_upper for kw in ("DATE", "PAGE")):
                     i += 1
                     continue
                 # Check if this looks like narration for the NEXT transaction
