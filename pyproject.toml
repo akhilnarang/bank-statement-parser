@@ -3,6 +3,8 @@ name = "bank-statement-parser"
 version = "0.1.0"
 description = "Bank account statement PDF parser"
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [
     { name = "Akhil Narang", email = "me@akhilnarang.dev" }
 ]
