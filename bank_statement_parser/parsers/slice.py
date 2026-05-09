@@ -54,6 +54,36 @@ _THRESHOLDS = ColumnThresholds(
 )
 
 
+def _select_reference(
+    narration: str,
+    channel: str | None,
+    column_ref: str | None,
+) -> str | None:
+    """Pick a reference number for a Slice statement row.
+
+    For UPI rows specifically, the slice statement places a 16-digit
+    bank-internal txn id in the Ref No column while the actual RBI UTR
+    sits inside the narration ("UPI-Credit-<UTR>-<name>-..."). The email
+    side uses the UTR as ``reference_number``, so to keep both sides on
+    the same identifier namespace we extract the UTR from the narration
+    and prefer it over the column ref.
+
+    For IMPS we cannot do the same — IMPS narrations carry the *sender
+    account number* (12+ digits) in roughly the position the regex would
+    look for a UTR, and account numbers are not unique transaction
+    identifiers. So IMPS keeps the column ref.
+
+    For all other channels (interest, bill payment, NEFT/RTGS via
+    statement, etc.) the column ref wins; if absent, the channel-aware
+    narration extractor is consulted.
+    """
+    if channel == "upi":
+        narr_ref = extract_reference_number(narration, channel)
+        if narr_ref:
+            return narr_ref
+    return column_ref or extract_reference_number(narration, channel)
+
+
 def _strip_rupee(token: str) -> tuple[str | None, bool]:
     """Strip ₹ or -₹ prefix and return (amount_str, is_debit).
 
@@ -221,7 +251,7 @@ class SliceBankStatementParser(GenericBankStatementParser):
             channel = detect_channel(narration)
             if not channel and narration.lower() == "bill payment":
                 channel = "upi"
-            ref = pending_ref or extract_reference_number(narration, channel)
+            ref = _select_reference(narration, channel, pending_ref)
             direction: str = "debit" if pending_is_debit else "credit"
 
             txns.append(
