@@ -119,6 +119,28 @@ CASES: list[tuple[str, str | None, str | None]] = [
         "imps",
         "100200300400",
     ),
+    # IDFC-style RTGS narrations carry the UTR with a stray space inside
+    # the token (PDF text-flow artifact). The token is slash-bounded
+    # (RTGS/<UTR>/...). The extractor must reconstitute the UTR by
+    # stripping the internal whitespace, otherwise we lose the trailing
+    # digits and the resulting "ref" never matches anything.
+    (
+        "RTGS/ABCDR620990106014019 77/SAMPLE PAYER NAME/EFGH0000004/Self transfer",
+        "rtgs",
+        "ABCDR62099010601401977",
+    ),
+    (
+        "RTGS/EFGHR1209901130848432 7/SAMPLE PAYER NAME/EFGH0000004",
+        "rtgs",
+        "EFGHR12099011308484327",
+    ),
+    # NEFT version of the same artifact (confirms the fix is not
+    # channel-specific to RTGS).
+    (
+        "NEFT/IJKLP00756133 514/Sample Operations Team/MNOP0000004",
+        "neft",
+        "IJKLP00756133514",
+    ),
     # Non-payment narrations: cheque clearing, bill pay, interest credit, etc.
     # These have digit runs (cheque numbers, dates, account numbers) that the old
     # blanket regex would falsely pick up. Channel is None, so no extraction.

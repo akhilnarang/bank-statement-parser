@@ -48,10 +48,15 @@ _CHANNEL_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("card", re.compile(r"\bPOS\b|\bCARD\b", re.IGNORECASE)),
 ]
 
-# NEFT/RTGS UTR: 4-letter bank code + 1 alphanumeric (varies per bank) + 7+ digits.
-# 7+ trailing digits (12+ char total) excludes 11-char IFSC codes like ABCD0000123
-# that also appear in NEFT narrations.
-_UTR_PATTERN = re.compile(r"\b([A-Z]{4}[A-Z0-9]\d{7,})\b")
+# NEFT/RTGS UTR: 4-letter bank code + 1 alphanumeric (varies per bank) +
+# 7+ digits, optionally followed by 1-4 more digits split off by a single
+# stray whitespace (PDF text-flow artifact, observed on IDFC RTGS rows
+# like ``RTGS/IDFBR620260106014019 77/...``). The whitespace is stripped
+# from the captured group so the reconstituted UTR matches what the
+# email side captures for the same transaction.
+# 7+ trailing digits (12+ char total) excludes 11-char IFSC codes like
+# ABCD0000123 that also appear in NEFT narrations.
+_UTR_PATTERN = re.compile(r"\b([A-Z]{4}[A-Z0-9]\d{7,}(?:\s\d{1,4})?)\b")
 
 # UPI/IMPS RRN: 12-digit numeric (occasionally longer, up to 22). Conservative —
 # only matches the *first* well-bounded numeric run. Used only for channels where
@@ -88,7 +93,7 @@ def extract_reference_number(narration: str, channel: str | None = None) -> str 
     if ch in {"neft", "rtgs"}:
         match = _UTR_PATTERN.search(narration)
         if match:
-            return match.group(1)
+            return re.sub(r"\s+", "", match.group(1))
         match = _DIGIT_RRN_PATTERN.search(narration)
         return match.group(1) if match else None
 
