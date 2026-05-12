@@ -27,6 +27,9 @@ from bank_statement_parser.parsers.utils import (
     extract_reference_number,
     parse_date_text,
 )
+from bank_statement_parser.parsers.utils.idfc_counterparty import (
+    extract_counterparty as extract_idfc_counterparty,
+)
 
 _ACCOUNT_RE = re.compile(
     r"SAVINGS ACCOUNT DETAILS FOR A/C\s*:\s*(\d+)",
@@ -282,6 +285,7 @@ class IdfcBankStatementParser(GenericBankStatementParser):
             balance = extract_amount(_strip_cr(balance_str)) if balance_str else None
             channel = detect_channel(narr_raw)
             ref = extract_reference_number(narr_raw, channel)
+            counterparty = extract_idfc_counterparty(narr_raw, channel, direction)
 
             txns.append(
                 BankTransaction(
@@ -292,6 +296,7 @@ class IdfcBankStatementParser(GenericBankStatementParser):
                     balance=balance,
                     reference_number=ref,
                     channel=channel,
+                    counterparty=counterparty,
                 )
             )
 
@@ -454,6 +459,7 @@ class IdfcBankStatementParser(GenericBankStatementParser):
         balance = extract_amount(_strip_cr(balance_str)) if balance_str else None
         channel = detect_channel(narration)
         ref = extract_reference_number(narration, channel)
+        counterparty = extract_idfc_counterparty(narration, channel, direction)
 
         return BankTransaction(
             date=date_str,
@@ -463,5 +469,6 @@ class IdfcBankStatementParser(GenericBankStatementParser):
             balance=balance,
             reference_number=ref,
             channel=channel,
+            counterparty=counterparty,
             value_date=value_date,
         )

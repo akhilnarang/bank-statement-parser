@@ -17,6 +17,8 @@ wheels/
 # Debugging and export results
 *.csv
 *.json
+# Test fixtures (PII-scrubbed JSON extraction payloads) must be committed
+!tests/fixtures/*.json
 
 # Local tool state
 .codex

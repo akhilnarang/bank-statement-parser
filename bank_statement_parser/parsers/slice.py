@@ -34,6 +34,9 @@ from bank_statement_parser.parsers.utils import (
     extract_reference_number,
     parse_date_text,
 )
+from bank_statement_parser.parsers.utils.slice_counterparty import (
+    extract_counterparty as extract_slice_counterparty,
+)
 
 # Regex patterns for metadata extraction
 _ACCOUNT_RE = re.compile(r"A/C\s+number\s+(\d+)", re.IGNORECASE)
@@ -253,6 +256,7 @@ class SliceBankStatementParser(GenericBankStatementParser):
                 channel = "upi"
             ref = _select_reference(narration, channel, pending_ref)
             direction: str = "debit" if pending_is_debit else "credit"
+            counterparty = extract_slice_counterparty(narration, channel, direction)
 
             txns.append(
                 BankTransaction(
@@ -263,6 +267,7 @@ class SliceBankStatementParser(GenericBankStatementParser):
                     balance=pending_balance,
                     reference_number=ref,
                     channel=channel,
+                    counterparty=counterparty,
                 )
             )
             pending_date = None

@@ -33,6 +33,9 @@ from bank_statement_parser.parsers.utils import (
     extract_reference_number,
     parse_date_text,
 )
+from bank_statement_parser.parsers.utils.kotak_counterparty import (
+    extract_counterparty as extract_kotak_counterparty,
+)
 
 _KOTAK_DATE_HINTS = ["%d %b %Y"]
 
@@ -344,6 +347,7 @@ class KotakBankStatementParser(GenericBankStatementParser):
             ref = extract_reference_number(narration, channel)
             if not ref and ref_cell:
                 ref = ref_cell
+            counterparty = extract_kotak_counterparty(narration, channel, direction)
 
             txns.append(
                 BankTransaction(
@@ -354,6 +358,7 @@ class KotakBankStatementParser(GenericBankStatementParser):
                     balance=balance,
                     reference_number=ref,
                     channel=channel,
+                    counterparty=counterparty,
                 )
             )
 
