@@ -21,10 +21,33 @@ _DEFAULT_FORMAT_HINTS = (
 )
 
 
+_MONTH_TOKEN = re.compile(
+    r"(?i)\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)",
+)
+# Two or more numeric groups joined by a date separator (/, -, .), e.g.
+# "01/04/2026", "15-Apr" (after a month check), "1.4.26".
+_SEPARATED_NUMERIC = re.compile(r"\d+\s*[/.\-]\s*\d+")
+
+
 def _normalize_token(token: str) -> str:
     normalized = token.strip().replace("’", "'").replace("`", "")
     normalized = re.sub(r"(?<=\s)'(\d{2})(?=\b)", r"\1", normalized)
     return re.sub(r"\s+", " ", normalized)
+
+
+def _looks_like_date(token: str) -> bool:
+    """Heuristic guard before the permissive dateutil fallback.
+
+    The dateutil fallback fills missing components from a default date, so a
+    bare integer like ``"12"`` or ``"2026"`` would be coerced into a full
+    date. That misclassifies plain numeric narration tokens as transaction
+    date lines. A token only looks like a date if it contains either a
+    month name/abbreviation or a separator (``/ - .``) between numeric
+    groups.
+    """
+    if _MONTH_TOKEN.search(token):
+        return True
+    return bool(_SEPARATED_NUMERIC.search(token))
 
 
 def format_date(value: date) -> str:
@@ -47,6 +70,9 @@ def parse_date(
             return datetime.strptime(normalized, hint).date()
         except ValueError:
             continue
+
+    if not _looks_like_date(normalized):
+        return None
 
     try:
         return date_parser.parse(

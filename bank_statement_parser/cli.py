@@ -143,10 +143,15 @@ def print_compact_table(output_data: ParsedBankStatement) -> None:
         recon_table.add_row("Credit Total", recon.parsed_credit_total)
         recon_table.add_row("Computed Closing", recon.computed_closing_balance)
 
-        delta_style = "green" if recon.balance_delta in ("0.00", "0") else "red bold"
-        recon_table.add_row(
-            "Delta", f"[{delta_style}]{recon.balance_delta}[/{delta_style}]"
-        )
+        if recon.balance_delta is None:
+            recon_table.add_row(
+                "Delta", "[yellow]n/a (balances not extracted)[/yellow]"
+            )
+        else:
+            delta_style = "green" if recon.reconciled else "red bold"
+            recon_table.add_row(
+                "Delta", f"[{delta_style}]{recon.balance_delta}[/{delta_style}]"
+            )
         console.print(recon_table)
 
 

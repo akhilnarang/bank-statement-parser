@@ -4,8 +4,6 @@ Synthetic word streams modelled after real PDF layouts. No real personal
 data — names, account numbers, refs, and amounts are fabricated.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from bank_statement_parser.parsers.icici import IciciBankStatementParser
@@ -203,3 +201,10 @@ def test_last_transaction_narration_does_not_absorb_post_txn_section() -> None:
     # Counterparty must be the merchant segment, not the full UPI narration
     assert last.counterparty == "PIZZA PLACE"
     assert parsed.transactions[0].counterparty == "JOHN DOE"
+
+
+def test_synthetic_statement_reconciles() -> None:
+    parsed = IciciBankStatementParser().parse(_build_raw_data())
+    assert parsed.reconciliation is not None
+    assert parsed.reconciliation.balance_delta == "0.00"
+    assert parsed.reconciliation.reconciled is True
