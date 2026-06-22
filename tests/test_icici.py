@@ -208,3 +208,152 @@ def test_synthetic_statement_reconciles() -> None:
     assert parsed.reconciliation is not None
     assert parsed.reconciliation.balance_delta == "0.00"
     assert parsed.reconciliation.reconciled is True
+
+
+def _build_embedded_amount_raw_data() -> dict[str, Any]:
+    """Date line whose PARTICULARS token embeds an amount-like substring.
+
+    ICICI narrations contain fragments like
+    "SENDER/707070/UBI/01.02.2099..." where the "01.02" reads as an amount.
+    Such a token sits in the PARTICULARS column (x≈140), NOT an amount
+    column, and must be kept as narration — never consumed as an amount.
+
+    All values below are fabricated, not drawn from any real statement.
+    """
+    words: list[dict[str, Any]] = []
+
+    # Header row
+    y = 100.0
+    for token, x in (
+        ("DATE", 30.0),
+        ("PARTICULARS", 140.0),
+        ("DEPOSIT", 380.0),
+        ("WITHDRAWAL", 460.0),
+        ("BALANCE", 540.0),
+    ):
+        words.append(_word(token, x, y))
+
+    # B/F opening row
+    y = 120.0
+    words.append(_word("01-04-2026", 30.0, y))
+    words.append(_word("B/F", 140.0, y))
+    words.append(_word("11,111.00", 540.0, y))
+
+    # Credit whose narration token carries an embedded "01.02" date fragment
+    y = 140.0
+    words.append(_word("15-04-2026", 30.0, y))
+    words.append(_word("SENDER/707070/UBI/01.02.2099445566778899001122", 140.0, y))
+    words.append(_word("7,777.00", 380.0, y))
+    words.append(_word("18,888.00", 540.0, y))
+    y = 150.0  # continuation fragment
+    words.append(_word("987654321098", 140.0, y))
+
+    full_text = (
+        "Savings Account XXXXXXXX9999\n"
+        "ACCOUNT HOLDERS: MR. SAMPLE NAME\n"
+        "period April 01, 2026 - April 30, 2026\n"
+        "DATE PARTICULARS DEPOSIT WITHDRAWAL BALANCE\n"
+        "01-04-2026 B/F 11,111.00\n"
+        "15-04-2026 SENDER/707070/UBI/01.02.2099445566778899001122 7,777.00 18,888.00\n"
+        "987654321098\n"
+    )
+    return {
+        "file": "synthetic_icici_embedded_amount.pdf",
+        "pages": [{"text": full_text, "words": words}],
+    }
+
+
+def test_narration_token_with_embedded_amount_is_not_dropped() -> None:
+    parsed = IciciBankStatementParser().parse(_build_embedded_amount_raw_data())
+
+    assert len(parsed.transactions) == 1, [t.narration for t in parsed.transactions]
+    txn = parsed.transactions[0]
+
+    assert txn.transaction_type == "credit"
+    assert txn.amount == "7,777.00"
+    assert txn.balance == "18,888.00"
+    # The PARTICULARS token must survive as narration, not be eaten as an amount.
+    assert "SENDER/707070/UBI" in txn.narration, txn.narration
+    assert "987654321098" in txn.narration, txn.narration
+
+
+def _build_clg_clearing_raw_data() -> dict[str, Any]:
+    """A cheque-clearing whose narration starts on the line ABOVE its date.
+
+    ICICI clearing narrations begin with a "CLG/<name>" line rendered one
+    visual line above the date row (like UPI/NEFT/etc.). That line must
+    attach to the clearing transaction below it, NOT the preceding row.
+
+    All values below are fabricated, not drawn from any real statement.
+    """
+    words: list[dict[str, Any]] = []
+
+    # Header row
+    y = 100.0
+    for token, x in (
+        ("DATE", 30.0),
+        ("PARTICULARS", 140.0),
+        ("DEPOSIT", 380.0),
+        ("WITHDRAWAL", 460.0),
+        ("BALANCE", 540.0),
+    ):
+        words.append(_word(token, x, y))
+
+    # B/F opening row
+    y = 120.0
+    words.append(_word("01-04-2026", 30.0, y))
+    words.append(_word("B/F", 140.0, y))
+    words.append(_word("44,000.00", 540.0, y))
+
+    # Txn A — a transfer with its own below-continuation fragment
+    y = 140.0
+    words.append(_word("14-04-2026", 30.0, y))
+    words.append(_word("BIL/INFT/EKI0000001/Gift/", 140.0, y))
+    words.append(_word("8,800.00", 380.0, y))
+    words.append(_word("52,800.00", 540.0, y))
+    y = 150.0  # genuine continuation of Txn A
+    words.append(_word("zz99", 140.0, y))
+
+    # Txn B — cheque clearing: narration starts on the line ABOVE the date row
+    y = 160.0
+    words.append(_word("CLG/PAYEE NAME", 140.0, y))
+    y = 170.0
+    words.append(_word("15-04-2026", 30.0, y))
+    words.append(_word("PAYER/636363/HDF/02.03.2099889900112233", 140.0, y))
+    words.append(_word("3,300.00", 380.0, y))
+    words.append(_word("56,100.00", 540.0, y))
+    y = 180.0  # below-continuation of Txn B
+    words.append(_word("778899001122", 140.0, y))
+
+    full_text = (
+        "Savings Account XXXXXXXX9999\n"
+        "ACCOUNT HOLDERS: MR. SAMPLE NAME\n"
+        "period April 01, 2026 - April 30, 2026\n"
+        "DATE PARTICULARS DEPOSIT WITHDRAWAL BALANCE\n"
+        "01-04-2026 B/F 44,000.00\n"
+        "14-04-2026 BIL/INFT/EKI0000001/Gift/ 8,800.00 52,800.00\n"
+        "zz99\n"
+        "CLG/PAYEE NAME\n"
+        "15-04-2026 PAYER/636363/HDF/02.03.2099889900112233 3,300.00 56,100.00\n"
+        "778899001122\n"
+    )
+    return {
+        "file": "synthetic_icici_clg.pdf",
+        "pages": [{"text": full_text, "words": words}],
+    }
+
+
+def test_clg_clearing_narration_attaches_to_its_own_transaction() -> None:
+    parsed = IciciBankStatementParser().parse(_build_clg_clearing_raw_data())
+
+    assert len(parsed.transactions) == 2, [t.narration for t in parsed.transactions]
+    txn_a, txn_b = parsed.transactions
+
+    # The CLG line belongs to the clearing (Txn B), not the preceding transfer.
+    assert "CLG/PAYEE NAME" not in txn_a.narration, txn_a.narration
+    assert "BIL/INFT/EKI0000001" in txn_a.narration, txn_a.narration
+    assert "zz99" in txn_a.narration, txn_a.narration
+
+    assert txn_b.narration.startswith("CLG/PAYEE NAME"), txn_b.narration
+    assert "PAYER/636363/HDF" in txn_b.narration, txn_b.narration
+    assert "778899001122" in txn_b.narration, txn_b.narration

@@ -201,7 +201,11 @@ class IciciBankStatementParser(GenericBankStatementParser):
             mode_tokens: list[str] = []
 
             for w in line_words[1:]:  # skip the date token
-                amt_match = AMOUNT_RE.search(w["text"])
+                # An amount token IS an amount — it does not merely contain
+                # one. Narration fragments like "SENDER/707070/UBI/01.02.2099…"
+                # embed amount-shaped substrings ("01.02") but live in the
+                # PARTICULARS column; `fullmatch` keeps them as narration.
+                amt_match = AMOUNT_RE.fullmatch(w["text"])
                 if amt_match:
                     x = float(w["x0"])
                     amt_str = amt_match.group(0)
@@ -273,9 +277,12 @@ class IciciBankStatementParser(GenericBankStatementParser):
                     i += 1
                     continue
                 # Check if this looks like narration for the NEXT transaction
-                # (starts with UPI/, NEFT/, IMPS/, MMT/, etc.)
+                # (starts with UPI/, NEFT/, IMPS/, MMT/, CLG/, etc.). ICICI
+                # renders a transaction's leading narration on the line above
+                # its date row, so a recognised prefix here marks where the
+                # next transaction begins.
                 if re.match(
-                    r"^(UPI|NEFT|IMPS|MMT|RTGS|POS|ATM|ACH|NACH|SI/|FT/|VISA|BIL)",
+                    r"^(UPI|NEFT|IMPS|MMT|RTGS|POS|ATM|ACH|NACH|CLG/|SI/|FT/|VISA|BIL)",
                     next_joined,
                     re.IGNORECASE,
                 ):
