@@ -143,12 +143,29 @@ CASES: list[tuple[str, str | None, str | None]] = [
     ),
     # Non-payment narrations: cheque clearing, bill pay, interest credit, etc.
     # These have digit runs (cheque numbers, dates, account numbers) that the old
-    # blanket regex would falsely pick up. Channel is None, so no extraction.
+    # blanket regex would falsely pick up. `cheque` is not a ref-bearing channel,
+    # so no extraction.
     (
         "CLG/SAMPLE CUSTOMER NAME/000099/ABC/01.01.20250101202500099900099 99999999999999",
-        None,
+        "cheque",
         None,
     ),
+    ("CLG/SAMPLE CUSTOMER NAME/000099/ABC/01.01.2025", "cheque", None),
+    # The CLG pattern is prefix-anchored and ordered ahead of the broad
+    # anywhere-match patterns, so it wins even when a later pattern's marker
+    # appears inside the payer name...
+    ("CLG/UPI SERVICES PVT LTD/000099/ABC/01.01.2025", "cheque", None),
+    ("CLG/NEFT TRADERS/000099/ABC/01.01.2025", "cheque", None),
+    # ...and, conversely, a narration that merely CONTAINS the letters CLG
+    # somewhere is not a clearing row and keeps its own channel and ref.
+    ("BIL/INFT/AB99999999/CLG SERVICES", "netbanking", "AB99999999"),
+    (
+        "UPI/CLG TRADERS/clg@bank/Paid/ACME BANK/100200300400/XYZ1",
+        "upi",
+        "100200300400",
+    ),
+    # Pre-existing cheque markers keep their channel.
+    ("CHQ PAID 000099", "cheque", None),
     ("MIN/PAY WWW XYZ/202500000000/999999/", None, None),
     ("BIL/INFT/AB99999999/ SAMPLE PAYEE", "netbanking", "AB99999999"),
     # ICICI MasterCard debit-card refund/reversal. The trailing 6 digits are a

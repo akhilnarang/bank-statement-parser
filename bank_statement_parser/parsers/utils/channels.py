@@ -20,6 +20,12 @@ MONTH_ABBREVS = {
 }
 
 _CHANNEL_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
+    # Prefix-anchored layouts come first. detect_channel() returns the first
+    # match, and the patterns below match their marker *anywhere* in the
+    # narration, so an anchored layout would otherwise be stolen by whichever
+    # broad pattern happens to match a token further along.
+    # CLG = clearing: the inward cheque-clearing leg (ICICI savings).
+    ("cheque", re.compile(r"^\s*CLG\s*/", re.IGNORECASE)),
     ("upi", re.compile(r"\bUPI\b", re.IGNORECASE)),
     ("neft", re.compile(r"\bNEFT\b", re.IGNORECASE)),
     ("rtgs", re.compile(r"\bRTGS\b", re.IGNORECASE)),

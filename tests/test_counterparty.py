@@ -145,12 +145,59 @@ CASES: list[tuple[str, str | None, str | None]] = [
         "neft",
         "SAMPLE BENE",
     ),
+    # Cheque clearing: CLG/<payer>/<serial>/<bank code>/<date><instrument ref>.
+    # The last segment can carry a trailing continuation token from the PDF text
+    # flow — it must not end up in the name.
+    (
+        "CLG/SAMPLE CUSTOMER NAME/000099/ABC/01.01.20250101202500099900099 99999999999999",
+        "cheque",
+        "SAMPLE CUSTOMER NAME",
+    ),
+    # Same layout without the trailing continuation token.
+    (
+        "CLG/SAMPLE CUSTOMER NAME/000099/ABC/01.01.2025",
+        "cheque",
+        "SAMPLE CUSTOMER NAME",
+    ),
+    # A payer name containing a slash (joint account) survives: the name is read
+    # relative to the fixed three-field suffix, not as segment 1.
+    (
+        "CLG/SAMPLE NAME/JOINT NAME/000099/ABC/01.01.2025",
+        "cheque",
+        "SAMPLE NAME/JOINT NAME",
+    ),
+    # A trailing slash is formatting, not a field: empty tail segments are
+    # dropped before the suffix window is taken, so the payer is unaffected.
+    ("CLG/SAMPLE NAME/000099/ABC/01.01.2025/", "cheque", "SAMPLE NAME"),
+    ("CLG/SAMPLE NAME/000099/ABC/01.01.2025//", "cheque", "SAMPLE NAME"),
+    # Malformed / truncated CLG rows → None rather than a garbage name.
+    ("CLG/SAMPLE CUSTOMER NAME", "cheque", None),
+    ("CLG/", "cheque", None),
+    ("CLG/////", "cheque", None),
+    # Truncated: payer + serial + bank code but no date/ref field.
+    ("CLG/SAMPLE CUSTOMER NAME/000099/ABC", "cheque", None),
+    # Empty payer segments (stray slashes) shift the suffix window — the split
+    # is not the layout we assume, so refuse rather than emit a holed name.
+    ("CLG//000099/ABC/01.01.2025", "cheque", None),
+    ("CLG//SAMPLE NAME/000099/ABC/01.01.2025", "cheque", None),
+    ("CLG/SAMPLE NAME//000099/ABC/01.01.2025", "cheque", None),
+    ("CLG/SAMPLE NAME/000099//ABC/01.01.2025", "cheque", None),
+    # Suffix fields that don't validate: serial must be digits, bank code must
+    # be letters, and the trailing field must start with the date.
+    ("CLG/SAMPLE NAME/NOTNUM/ABC/01.01.2025", "cheque", None),
+    ("CLG/SAMPLE NAME/000099/12345/01.01.2025", "cheque", None),
+    ("CLG/SAMPLE NAME/000099/ABC/NOTADATE", "cheque", None),
+    # Payer position occupied by digits → not a name.
+    ("CLG/000099/ABC/01.01.2025/99999999", "cheque", None),
+    ("CLG/000099/000012/HDF/01.01.2025", "cheque", None),
+    # Other cheque narrations have no structured payer segment.
+    ("CHQ PAID 000099", "cheque", None),
     # Channels we don't have a structured format for: return None so caller
     # falls back to narration.
     ("MCD REF PAY WWW 250101", "debit_card", None),
     ("999999999999:Int.Pd:01-04-2025 to 01-07-2025", "interest", None),
     ("CMS TRANSACTION CMS/ EXCESS CREDIT REFUND/ICICI BANK LTD CRE", "netbanking", None),
-    # Unknown channel → None
+    # No channel hint → no extraction, even for a CLG-shaped narration.
     ("CLG/SAMPLE CUSTOMER NAME/000099/ABC/01.01.2025", None, None),
     # Edge: empty narration
     ("", "upi", None),

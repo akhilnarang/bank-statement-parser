@@ -127,6 +127,70 @@ def _extract_neft_rtgs(narration: str) -> str | None:
     return after_utr[-1]
 
 
+_CLG_RE = re.compile(r"^\s*CLG\s*/", re.IGNORECASE)
+# The three fields that must follow the payer, checked so the suffix window is
+# validated rather than assumed:
+_CLG_SERIAL_RE = re.compile(r"^\d{1,12}$")  # cheque serial, zero-padded
+_CLG_BANK_RE = re.compile(r"^[A-Z]{2,6}$", re.IGNORECASE)  # drawee bank code
+_CLG_TAIL_RE = re.compile(r"^\d")  # date+ref field, always starts with the date
+
+
+def _extract_cheque(narration: str) -> str | None:
+    """Cheque clearing (ICICI savings):
+
+    `CLG/<payer>/<serial>/<bank code>/<date><instrument ref>`
+
+    The payer is read relative to the three-field suffix (serial, bank code,
+    date+ref) rather than as segment 1, so a payer name that itself contains a
+    slash (joint accounts) survives intact.
+
+    The suffix is *validated*, not assumed: empty or repeated slashes would
+    otherwise shift the window and yield a mangled name. Trailing empty
+    segments are dropped first (a narration may end in a slash), and each of
+    the three suffix fields plus every payer segment must be well-formed —
+    anything else is malformed and returns None.
+
+    The trailing field may carry a continuation token appended by the PDF text
+    flow (`.../01.01.20250101202500099900099 99999999999999`); it lands past
+    the last slash, so it cannot bleed into the name.
+
+    Only the `CLG/` layout is structured. Other cheque narrations (`CHQ PAID`,
+    `CHEQUE DEPOSIT`) carry no payer segment, so they return None and the
+    caller falls back to the raw narration.
+    """
+    if not _CLG_RE.match(narration):
+        return None
+
+    parts = _segments(narration, "/")
+    # A trailing slash is benign formatting, not a field — drop empties from the
+    # end so they don't push the suffix window left onto the payer.
+    while parts and not parts[-1]:
+        parts.pop()
+
+    # CLG + payer + the three-field suffix.
+    if len(parts) < 5:
+        return None
+
+    serial, bank, tail = parts[-3], parts[-2], parts[-1]
+    if not (
+        _CLG_SERIAL_RE.match(serial)
+        and _CLG_BANK_RE.match(bank)
+        and _CLG_TAIL_RE.match(tail)
+    ):
+        return None
+
+    payer_parts = parts[1:-3]
+    # An empty payer segment means a stray slash, so the split is not the
+    # layout we think it is — refuse rather than emit a name with a hole in it.
+    if not payer_parts or any(not p for p in payer_parts):
+        return None
+
+    name = "/".join(payer_parts).strip()
+    if not name or name.isdigit():
+        return None
+    return name
+
+
 _BIL_INFT_RE = re.compile(r"^\s*BIL\s*/\s*INFT\b", re.IGNORECASE)
 _BIL_ONL_RE = re.compile(r"^\s*BIL\s*/\s*ONL\b", re.IGNORECASE)
 
@@ -175,6 +239,8 @@ def extract_counterparty(narration: str, channel: str | None) -> str | None:
         return _extract_neft_rtgs(narration)
     if ch == "netbanking":
         return _extract_netbanking(narration)
+    if ch == "cheque":
+        return _extract_cheque(narration)
 
     return None
 

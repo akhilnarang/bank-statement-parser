@@ -358,6 +358,18 @@ def test_clg_clearing_narration_attaches_to_its_own_transaction() -> None:
     assert "PAYER/636363/HDF" in txn_b.narration, txn_b.narration
     assert "778899001122" in txn_b.narration, txn_b.narration
 
+    # The clearing row resolves end-to-end: cheque channel, payer as
+    # counterparty, and no reference (the digit runs are a cheque serial and a
+    # date stamp, not a txn id). The trailing continuation token stays out of
+    # the name.
+    assert txn_b.channel == "cheque"
+    assert txn_b.counterparty == "PAYEE NAME PAYER"
+    assert txn_b.reference_number is None
+
+    # The unrelated transfer above it is untouched by CLG handling.
+    assert txn_a.channel == "netbanking"
+    assert txn_a.reference_number == "EKI0000001"
+
 
 def _build_final_page_without_total() -> dict[str, Any]:
     """The FINAL page of a statement, whose table has NO closing "Total:" row.
