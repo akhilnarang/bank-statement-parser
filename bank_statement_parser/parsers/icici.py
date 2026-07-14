@@ -44,6 +44,30 @@ _PERIOD_RE = re.compile(
 )
 _NAME_RE = re.compile(r"ACCOUNT\s+HOLDERS?\s*:\s*(MR\.|MRS\.|MS\.)?(.+)", re.IGNORECASE)
 
+# Lines that end the transaction table. A page usually closes with "Total:", but
+# the FINAL page of a statement need not carry one — there the table simply runs
+# into the post-statement sections. Without a marker for those, the last
+# transaction's narration absorbs the entire page tail: nominee table, card-
+# blocking instructions, the transaction-code legend. That garbage then feeds
+# channel/counterparty detection, so a transfer was read as an ATM withdrawal
+# because the legend it swallowed contains "Cash Withdrawal at other Bank's ATM".
+_TABLE_END_MARKERS = (
+    "TOTAL:",
+    "ACCOUNT RELATED OTHER INFORMATION",
+    "NAME OF NOMINEE",
+    "LEGENDS FOR TRANSACTIONS",
+    "THIS IS A SYSTEM GENERATED",
+    "CARD BLOCKING PROCEDURE",
+    "ACCOUNT BLOCKING PROCEDURE",
+    "SINCERELY",
+)
+
+# Backstop for a tail we have not seen before. Real ICICI narrations run to a
+# handful of continuation lines; a page footer runs to dozens. Marker lists only
+# catch the footers we already know, so bound the walk structurally too — an
+# unrecognised footer then costs a few stray words, not the whole page.
+_MAX_CONTINUATION_LINES = 5
+
 _THRESHOLDS = ColumnThresholds(
     deposit_max=420.0,
     withdrawal_max=520.0,
@@ -257,6 +281,7 @@ class IciciBankStatementParser(GenericBankStatementParser):
             # Collect continuation lines below (non-date, non-header lines)
             pending_narration_above = []
             i += 1
+            continuation_lines = 0
             while i < len(lines):
                 next_tokens = [w["text"] for w in lines[i]]
                 if not next_tokens:
@@ -267,11 +292,13 @@ class IciciBankStatementParser(GenericBankStatementParser):
                     break  # Next transaction starts
                 next_joined = " ".join(next_tokens)
                 next_upper = next_joined.upper()
-                # `Total:` marks the end of the transactions section on an
-                # ICICI page; everything below (Account Related Other
-                # Information, nominee table, page footer) is metadata and
-                # must not be absorbed into the last transaction's narration.
-                if "TOTAL:" in next_upper:
+                # End of the transactions section: everything below is metadata
+                # and must not be absorbed into the last transaction's narration.
+                if any(marker in next_upper for marker in _TABLE_END_MARKERS):
+                    break
+                # A narration this long is not a narration. Stop before an
+                # unrecognised footer swallows the page.
+                if continuation_lines >= _MAX_CONTINUATION_LINES:
                     break
                 if any(kw in next_upper for kw in ("DATE", "PAGE")):
                     i += 1
@@ -292,6 +319,7 @@ class IciciBankStatementParser(GenericBankStatementParser):
                     break
                 # Continuation of current narration
                 narration_parts.append(next_joined.strip())
+                continuation_lines += 1
                 i += 1
 
             narration = " ".join(narration_parts).strip()

@@ -357,3 +357,128 @@ def test_clg_clearing_narration_attaches_to_its_own_transaction() -> None:
     assert txn_b.narration.startswith("CLG/PAYEE NAME"), txn_b.narration
     assert "PAYER/636363/HDF" in txn_b.narration, txn_b.narration
     assert "778899001122" in txn_b.narration, txn_b.narration
+
+
+def _build_final_page_without_total() -> dict[str, Any]:
+    """The FINAL page of a statement, whose table has NO closing "Total:" row.
+
+    This is the shape that leaked in production. The last transaction ran
+    straight into the post-statement sections, and its narration swallowed the
+    nominee table, the card-blocking instructions and the transaction-code
+    legend — about 1,600 characters of boilerplate. The legend contains the
+    phrase "Cash Withdrawal at other Bank's ATM", so channel detection then
+    read a plain transfer as an ATM withdrawal.
+
+    The existing footer test supplies a "Total:" row, which is the only
+    terminator the old code knew — so it never covered this page shape.
+
+    All values fabricated.
+    """
+    words: list[dict[str, Any]] = []
+
+    y = 100.0
+    for token, x in (
+        ("DATE", 30.0),
+        ("PARTICULARS", 140.0),
+        ("DEPOSIT", 380.0),
+        ("WITHDRAWAL", 460.0),
+        ("BALANCE", 540.0),
+    ):
+        words.append(_word(token, x, y))
+
+    y = 120.0
+    words.append(_word("01-06-2026", 30.0, y))
+    words.append(_word("B/F", 140.0, y))
+    words.append(_word("10,000.00", 540.0, y))
+
+    # The last transaction of the statement: a transfer in.
+    y = 140.0
+    words.append(_word("11-06-2026", 30.0, y))
+    words.append(_word("TRF/FROM/SB/000900112233", 140.0, y))
+    words.append(_word("21,000.00", 380.0, y))
+    words.append(_word("31,000.00", 540.0, y))
+
+    # NO "Total:" row — the footer starts immediately.
+    footer_lines = [
+        ["Account", "Related", "Other", "Information"],
+        ["ACCOUNT", "TYPE", "NAME", "OF", "NOMINEE"],
+        ["Savings", "XXXXXXXX3333", "100200300", "ACME0000123"],
+        ["Legends", "for", "transactions", "in", "your", "Account", "Statement"],
+        ["VAT/MAT/NFS", "Cash", "Withdrawal", "at", "other", "Bank's", "ATM"],
+        ["Sincerely,", "Team", "Sample", "Bank"],
+    ]
+    y = 170.0
+    for tokens in footer_lines:
+        x = 28.0
+        for tok in tokens:
+            words.append(_word(tok, x, y))
+            x += 40.0
+        y += 20.0
+
+    text_lines = [
+        "DATE PARTICULARS DEPOSIT WITHDRAWAL BALANCE",
+        "01-06-2026 B/F 10,000.00",
+        "11-06-2026 TRF/FROM/SB/000900112233 21,000.00 31,000.00",
+        "Account Related Other Information",
+        "ACCOUNT TYPE NAME OF NOMINEE",
+        "Savings XXXXXXXX3333 100200300 ACME0000123",
+        "Legends for transactions in your Account Statement",
+        "VAT/MAT/NFS Cash Withdrawal at other Bank's ATM",
+        "Sincerely, Team Sample Bank",
+    ]
+    full_text = (
+        "Savings Account XXXXXXXX3333\n"
+        "ACCOUNT HOLDERS: MR. SAMPLE NAME\n"
+        "period June 01, 2026 - June 30, 2026\n" + "\n".join(text_lines)
+    )
+    return {
+        "file": "synthetic_icici_final_page.pdf",
+        "pages": [{"text": full_text, "words": words}],
+    }
+
+
+def test_final_page_without_total_does_not_swallow_the_footer() -> None:
+    """A missing "Total:" row must not leave the narration walk with no terminator."""
+    parsed = IciciBankStatementParser().parse(_build_final_page_without_total())
+
+    assert len(parsed.transactions) == 1, [t.narration for t in parsed.transactions]
+    last = parsed.transactions[-1]
+
+    assert last.amount == "21,000.00"
+    assert "TRF/FROM/SB/000900112233" in last.narration
+
+    for leak in (
+        "Account Related",
+        "NOMINEE",
+        "ACME0000123",
+        "Legends",
+        "Withdrawal",
+        "ATM",
+        "Sincerely",
+    ):
+        assert leak not in last.narration, (
+            f"footer text {leak!r} leaked into the last narration: {last.narration!r}"
+        )
+
+    # The swallowed legend is what mis-set the channel in production.
+    assert last.channel != "atm"
+
+
+def test_an_unrecognised_footer_is_still_bounded() -> None:
+    """Marker lists only catch the footers we already know about. A tail we have
+    never seen must still be bounded, or the next unfamiliar layout reopens this
+    same bug."""
+    raw = _build_final_page_without_total()
+    words = [w for w in raw["pages"][0]["words"] if w["doctop"] <= 140.0]
+    y = 170.0
+    for n in range(40):
+        words.append(_word(f"boilerplate{n}", 28.0, y))
+        y += 20.0
+    raw["pages"][0]["words"] = words
+
+    parsed = IciciBankStatementParser().parse(raw)
+
+    assert len(parsed.transactions) == 1
+    narration = parsed.transactions[0].narration
+    assert narration.count("boilerplate") <= 5, narration
+    assert len(narration) < 200, narration
