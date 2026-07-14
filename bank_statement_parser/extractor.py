@@ -34,16 +34,24 @@ def metadata_from_pypdf(reader: PdfReader) -> dict[str, str]:
 
 
 def is_pdf_encrypted(pdf_path: Path) -> bool:
-    """Check whether a PDF requires a password.
+    """Check whether a PDF requires a password from the user.
+
+    Many bank statements are encrypted with an *empty* user password: they
+    open in a browser/reader without prompting because readers auto-try the
+    empty password. Such files are encrypted at the PDF level but do not
+    require the user to supply anything, so they are not reported here.
 
     Args:
         pdf_path: Path to input PDF.
 
     Returns:
-        True if the PDF is encrypted, else False.
+        True if a (non-empty) password is required, else False.
     """
     reader = PdfReader(str(pdf_path))
-    return bool(reader.is_encrypted)
+    if not reader.is_encrypted:
+        return False
+    # decrypt() returns 0 on failure, non-zero when the password matches.
+    return reader.decrypt("") == 0
 
 
 def prepare_pdf_bytes_if_encrypted(
@@ -72,12 +80,16 @@ def prepare_pdf_bytes_if_encrypted(
             metadata_from_pypdf(reader),
         )
 
+    # Try the empty user password first: banks commonly encrypt statements
+    # with a blank user password so they open without a prompt. Only demand a
+    # password when the empty one does not unlock the file.
     if not password:
-        raise ValueError("PDF is encrypted. Password is required.")
-
-    decrypt_result = reader.decrypt(password)
-    if decrypt_result == 0:
-        raise ValueError("Failed to decrypt PDF. Check the password.")
+        if reader.decrypt("") == 0:
+            raise ValueError("PDF is encrypted. Password is required.")
+    else:
+        decrypt_result = reader.decrypt(password)
+        if decrypt_result == 0:
+            raise ValueError("Failed to decrypt PDF. Check the password.")
 
     writer = PdfWriter()
     for page in reader.pages:
