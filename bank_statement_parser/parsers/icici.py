@@ -110,6 +110,10 @@ class IciciBankStatementParser(GenericBankStatementParser):
             transactions.extend(txns)
             if ob is not None and opening_balance is None:
                 opening_balance = ob
+            # The Linked Fixed Deposits section ends the savings statement. No
+            # later page has savings rows after this section starts. Stop here.
+            if "Statement of Linked Fixed Deposits" in str(page.get("text", "")):
+                break
 
         transactions = self._post_process(transactions, raw_data)
 
@@ -163,6 +167,18 @@ class IciciBankStatementParser(GenericBankStatementParser):
             # Skip header/section/footer lines
             joined = " ".join(tokens)
             upper = joined.upper()
+
+            # ICICI adds the "Statement of Linked Fixed Deposits" section after
+            # the savings transactions. Its date rows are for a different (FD)
+            # account. Do not read them as savings rows. The FD balance would
+            # then replace the savings closing balance and break the
+            # reconciliation. Stop at this header. Match the full header text.
+            # Do not match the page summary "Fixed Deposits Linked to Account",
+            # because that summary is on the same line group as the B/F opening
+            # row.
+            if "STATEMENT OF LINKED FIXED DEPOSITS" in upper:
+                break
+
             if any(
                 kw in upper
                 for kw in (
@@ -251,6 +267,7 @@ class IciciBankStatementParser(GenericBankStatementParser):
                 narration_parts.append(" ".join(mode_tokens))
 
             # Collect continuation lines below (non-date, non-header lines)
+            date_line_y = float(line_words[0]["doctop"])
             pending_narration_above = []
             i += 1
             while i < len(lines):
@@ -272,18 +289,39 @@ class IciciBankStatementParser(GenericBankStatementParser):
                 if any(kw in next_upper for kw in ("DATE", "PAGE")):
                     i += 1
                     continue
-                # Check if this looks like narration for the NEXT transaction
-                # (starts with UPI/, NEFT/, IMPS/, MMT/, etc.)
+                # A particulars line that starts with a channel prefix can be
+                # below the current date or above the next date. Assign the line
+                # to the nearer date baseline. The row spacing gives the answer.
                 if re.match(
                     r"^(UPI|NEFT|IMPS|MMT|RTGS|POS|ATM|ACH|NACH|SI/|FT/|VISA|BIL)",
                     next_joined,
                     re.IGNORECASE,
                 ):
-                    # This is the start of narration for the NEXT date line
+                    narration_y = float(lines[i][0]["doctop"])
+                    next_date_y = next(
+                        (
+                            float(future_line[0]["doctop"])
+                            for future_line in lines[i + 1 :]
+                            if future_line
+                            and parse_date_text(
+                                future_line[0]["text"],
+                                format_hints=["%d-%m-%Y"],
+                            )
+                        ),
+                        None,
+                    )
+                    if (
+                        next_date_y is not None
+                        and narration_y - date_line_y < next_date_y - narration_y
+                    ):
+                        narration_parts.append(next_joined.strip())
+                        i += 1
+                        continue
+                    # The line is the start of the narration for the next date.
                     pending_narration_above.append(next_joined.strip())
                     i += 1
                     break
-                # Continuation of current narration
+                # The line continues the narration of the current row.
                 narration_parts.append(next_joined.strip())
                 i += 1
 
