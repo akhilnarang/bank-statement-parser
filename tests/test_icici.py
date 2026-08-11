@@ -1,7 +1,7 @@
 """ICICI savings statement parser tests.
 
-Synthetic word streams modelled after real PDF layouts. No real personal
-data — names, account numbers, refs, and amounts are fabricated.
+The word streams keep the real PDF layout geometry. The tests replace all
+personal data, account numbers, references, and amounts with test values.
 """
 
 from typing import Any
@@ -169,6 +169,77 @@ def _build_raw_data() -> dict[str, Any]:
     }
 
 
+def _build_narration_partition_words() -> list[dict[str, Any]]:
+    """Build rows that keep the real ICICI below-date and above-date geometry."""
+    words: list[dict[str, Any]] = []
+
+    def add_line(y: float, *tokens: tuple[str, float]) -> None:
+        for text, x0 in tokens:
+            words.append(_word(text, x0, y))
+
+    # Two MOBILE BANKING credits. The particulars start below the date
+    # baseline. The 4.24-point gap keeps each MMT line in the current row.
+    add_line(
+        1374.44,
+        ("13-07-2026", 29.8),
+        ("MOBILE", 71.0),
+        ("BANKING", 94.2),
+        ("1,200.00", 370.4),
+        ("2,200.00", 526.8),
+    )
+    add_line(
+        1378.68,
+        ("MMT/IMPS/611111111111/Self", 136.3),
+        ("transfer/SAMPLE", 236.7),
+        ("PERSON/DEMO", 285.7),
+        ("Bank", 324.1),
+    )
+    add_line(1382.92, ("SAMPLE", 136.3), ("PERSON", 158.0))
+
+    add_line(
+        1391.38,
+        ("13-07-2026", 29.8),
+        ("MOBILE", 71.0),
+        ("BANKING", 94.2),
+        ("800.00", 370.4),
+        ("3,000.00", 526.8),
+    )
+    add_line(
+        1395.62,
+        ("MMT/IMPS/622222222222/Test/SAMPLE", 136.3),
+        ("PERSON/DEMO", 261.9),
+        ("Bank", 315.3),
+    )
+
+    # This row has inline particulars. Its continuation stays below. The
+    # distant UPI line is nearer to the next bare date row. Assign it there.
+    add_line(
+        1405.51,
+        ("13-07-2026", 29.8),
+        ("BIL/INFT/TEST000001/", 136.3),
+        ("SAMPLE", 211.5),
+        ("PERSON", 238.1),
+        ("500.00", 376.0),
+        ("3,500.00", 526.8),
+    )
+    add_line(1409.75, ("SAMPLE", 136.3), ("PERSON", 161.0))
+    add_line(
+        1423.87,
+        ("UPI/SAMPLE", 136.3),
+        ("PERSON/633333333333@demo/Paid", 174.3),
+        ("via", 263.7),
+        ("DEMO", 275.0),
+    )
+    add_line(
+        1428.11,
+        ("14-07-2026", 29.8),
+        ("100.00", 385.0),
+        ("3,600.00", 526.8),
+    )
+
+    return words
+
+
 def test_last_transaction_narration_does_not_absorb_post_txn_section() -> None:
     parsed = IciciBankStatementParser().parse(_build_raw_data())
 
@@ -208,6 +279,107 @@ def test_synthetic_statement_reconciles() -> None:
     assert parsed.reconciliation is not None
     assert parsed.reconciliation.balance_delta == "0.00"
     assert parsed.reconciliation.reconciled is True
+
+
+def test_narration_is_partitioned_by_nearest_date_baseline() -> None:
+    parser = IciciBankStatementParser()
+    transactions, _ = parser._parse_icici_page(_build_narration_partition_words())
+
+    assert [transaction.reference_number for transaction in transactions] == [
+        "611111111111",
+        "622222222222",
+        "TEST000001",
+        "633333333333",
+    ]
+    assert [transaction.amount for transaction in transactions] == [
+        "1,200.00",
+        "800.00",
+        "500.00",
+        "100.00",
+    ]
+    assert "MMT/IMPS/611111111111" in transactions[0].narration
+    assert "MMT/IMPS/622222222222" in transactions[1].narration
+    assert "UPI/SAMPLE" not in transactions[2].narration
+    assert transactions[3].narration.startswith("UPI/SAMPLE")
+
+
+def _build_linked_fd_section_words() -> list[dict[str, Any]]:
+    """Build a savings row, its ``Total:`` line, then a Linked FD section.
+
+    ICICI adds the FD section after the savings ``Total:``. The FD section has
+    date rows for a different account. The parser must not read these rows as
+    savings transactions. The FD balance would then replace the savings closing
+    balance and break the reconciliation.
+    """
+    words: list[dict[str, Any]] = []
+
+    y = 100.0
+    for token, x in (
+        ("DATE", 30.0),
+        ("MODE", 71.0),
+        ("PARTICULARS", 140.0),
+        ("DEPOSITS", 380.0),
+        ("WITHDRAWALS", 455.0),
+        ("BALANCE", 540.0),
+    ):
+        words.append(_word(token, x, y))
+
+    # B/F opening. The account, amount, and date values are fabricated.
+    y = 120.0
+    words += [_word("01-01-2020", 30.0, y), _word("B/F", 140.0, y), _word("1,000.00", 540.0, y)]
+
+    # One savings credit: 1,000.00 + 250.00 = 1,250.00.
+    y = 140.0
+    words += [
+        _word("15-01-2020", 30.0, y),
+        _word("999999999999:Int.Pd", 140.0, y),
+        _word("250.00", 385.0, y),
+        _word("1,250.00", 540.0, y),
+    ]
+
+    # Savings grand total. This line is the section boundary.
+    y = 160.0
+    words += [
+        _word("Total:", 137.0, y),
+        _word("250.00", 367.0, y),
+        _word("0.00", 450.0, y),
+        _word("1,250.00", 531.0, y),
+    ]
+
+    # Linked Fixed Deposits section header and its date rows. The account id
+    # and amounts are fabricated FD-side values. The parser must exclude them
+    # from the savings statement.
+    y = 180.0
+    for token, x in (
+        ("Statement", 136.0),
+        ("of", 176.0),
+        ("Linked", 190.0),
+        ("Fixed", 220.0),
+        ("Deposits", 246.0),
+    ):
+        words.append(_word(token, x, y))
+    y = 200.0
+    words += [_word("888888888888", 136.0, y), _word("NEW", 240.0, y), _word("ACCOUNT", 265.0, y)]
+    y = 220.0
+    words += [
+        _word("09-01-2020", 30.0, y),
+        _word("TRF", 140.0, y),
+        _word("FROM", 165.0, y),
+        _word("SB", 195.0, y),
+        _word("50,000.00", 380.0, y),
+        _word("50,000.00", 540.0, y),
+    ]
+
+    return words
+
+
+def test_linked_fd_section_is_not_parsed_as_savings() -> None:
+    parser = IciciBankStatementParser()
+    transactions, _opening = parser._parse_icici_page(_build_linked_fd_section_words())
+
+    # Keep only the one savings row. Exclude the FD row after the Total.
+    assert [t.amount for t in transactions] == ["250.00"], [t.narration for t in transactions]
+    assert transactions[-1].balance == "1,250.00"
 
 
 def _build_embedded_amount_raw_data() -> dict[str, Any]:
