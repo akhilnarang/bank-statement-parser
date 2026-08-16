@@ -5,7 +5,6 @@ from bank_statement_parser.parsers.utils.channels import (
     extract_reference_number,
 )
 
-
 # Synthetic narrations modeled after real bank statement formats — names, phone
 # numbers, account numbers, and reference IDs are randomized.
 # (narration, expected_channel, expected_ref)

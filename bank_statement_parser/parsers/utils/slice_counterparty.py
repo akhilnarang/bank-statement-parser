@@ -126,7 +126,7 @@ def _classify_short_narration(narration: str) -> str | None:
         return _BILL_PAYMENT_REFUND_LABEL
     if stripped in {"DEPOSIT", "MONIES TRANSFER", "INVITE & EARN"}:
         return "Self"
-    if head.startswith("INTEREST CR.") or head.startswith("INTEREST CR "):
+    if head.startswith(("INTEREST CR.", "INTEREST CR ")):
         return "Self"
     return None
 

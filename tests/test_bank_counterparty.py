@@ -22,7 +22,6 @@ from bank_statement_parser.parsers.utils.slice_counterparty import (
     extract_counterparty as slice_cp,
 )
 
-
 # ---------------------------------------------------------------------------
 # IDFC
 # ---------------------------------------------------------------------------

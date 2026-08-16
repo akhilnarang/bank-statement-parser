@@ -53,9 +53,7 @@ def classify_columns(
             "DETAILS",
             "TRANSACTION DETAILS",
             "TRANSACTION PARTICULARS",
-        ):
-            cols["narration"] = index
-        elif "MODE" in upper and "narration" not in cols:
+        ) or "MODE" in upper and "narration" not in cols:
             cols["narration"] = index
         elif "BALANCE" in upper:
             cols["balance"] = index

@@ -11,7 +11,6 @@ import pytest
 
 from bank_statement_parser.parsers.utils.counterparty import extract_counterparty
 
-
 # (narration, channel, expected_counterparty)
 CASES: list[tuple[str, str | None, str | None]] = [
     # UPI: UPI/<merchant>/<vpa>/<remarks>/<sender bank>/<rrn>/<txn id>

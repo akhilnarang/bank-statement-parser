@@ -15,7 +15,7 @@ def parse_amount(value: str) -> Decimal:
     try:
         return Decimal(cleaned)
     except InvalidOperation, ValueError:
-        return Decimal("0")
+        return Decimal(0)
 
 
 def format_amount(value: Decimal) -> str:

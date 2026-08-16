@@ -116,7 +116,7 @@ def extract_counterparty(
         return _extract_imps(narration)
     if head.startswith("ACHC-"):
         return _extract_achc(narration)
-    if head.startswith("ACH D-") or head.startswith("ACH D -"):
+    if head.startswith(("ACH D-", "ACH D -")):
         return _extract_ach_debit(narration)
     if head.startswith("POS"):
         return _extract_pos(narration)

@@ -35,3 +35,6 @@ dev = [
     "ruff>=0.15.9",
     "ty>=0.0.29",
 ]
+
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = ["typer.Argument", "typer.Option"]

@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 import re
-from typing import TypeAlias
 
 from bank_statement_parser.parsers.utils import parse_date_text
 
-Metadata: TypeAlias = dict[str, str | None]
+type Metadata = dict[str, str | None]
 
 _DEFAULT_ACCOUNT_NUMBER_RE = re.compile(
     r"(?:A/?C|ACCOUNT)\s*(?:NO\.?|NUMBER|#)\s*:?\s*(\d[\dX*\s]{6,20}\d)",

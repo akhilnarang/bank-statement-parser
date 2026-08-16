@@ -254,9 +254,8 @@ def extract_counterparty(
 
     # PMSBY (Pradhan Mantri Suraksha Bima Yojana) — annual insurance premium
     # auto-debited; extract the scheme label, dropping the date suffix.
-    if "PMSBY" in head:
-        if m := re.match(r"^(.*?PMSBY)\b", narration, re.IGNORECASE):
-            return m.group(1).strip()
+    if "PMSBY" in head and (m := re.match(r"^(.*?PMSBY)\b", narration, re.IGNORECASE)):
+        return m.group(1).strip()
 
     # Channel-only fallback (for narrations whose head we didn't match but
     # still have a known channel — rare in IDFC, but defensive).

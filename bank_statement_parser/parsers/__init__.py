@@ -11,11 +11,11 @@ from bank_statement_parser.parsers.generic import GenericBankStatementParser
 from bank_statement_parser.parsers.registry import PARSER_REGISTRY
 
 __all__ = [
+    "PARSER_REGISTRY",
     "BankReconciliation",
     "BankStatementParser",
     "BankTransaction",
     "GenericBankStatementParser",
-    "PARSER_REGISTRY",
     "ParsedBankStatement",
     "get_parser",
 ]

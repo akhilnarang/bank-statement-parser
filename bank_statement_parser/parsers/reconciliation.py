@@ -21,8 +21,8 @@ def summarize_transactions(
     transactions: list[BankTransaction],
 ) -> tuple[Decimal, Decimal, int, int]:
     """Return debit total, credit total, debit count, credit count."""
-    debit_total = Decimal("0")
-    credit_total = Decimal("0")
+    debit_total = Decimal(0)
+    credit_total = Decimal(0)
     debit_count = 0
     credit_count = 0
 
