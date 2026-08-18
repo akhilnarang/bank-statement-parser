@@ -18,6 +18,9 @@ from bank_statement_parser.parsers.utils.idfc_counterparty import (
 from bank_statement_parser.parsers.utils.kotak_counterparty import (
     extract_counterparty as kotak_cp,
 )
+from bank_statement_parser.parsers.utils.sbi_counterparty import (
+    extract_counterparty as sbi_cp,
+)
 from bank_statement_parser.parsers.utils.slice_counterparty import (
     extract_counterparty as slice_cp,
 )
@@ -316,3 +319,25 @@ def test_uboi_counterparty(narration, expected):
 
 def test_uboi_returns_none_on_unknown_layout():
     assert uboi_cp("1000000000000000/000000000000/000000000000") is None
+
+
+# ---------------------------------------------------------------------------
+# SBI (UPI-only; every other layout falls back to the raw narration)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "narration,expected",
+    [
+        # UPI/<CR|DR>/<rrn>/<NAME>/<BANK>/<vpa>/<remark> — name is segment 3.
+        ("UPI/CR/100000000001/JANE DOE/HDFC/jane@examplebank/Payment", "JANE DOE"),
+        ("UPI/DR/100000000002/JOHN DOE/ICIC/john@examplebank/Paid", "JOHN DOE"),
+        # No CR/DR marker -> not the mapped layout.
+        ("UPI/jane@examplebank/Payment/HDFC/100000000003", None),
+        # Non-UPI layouts are deliberately unmapped.
+        ("NEFT SOME COUNTERPARTY 100000000004", None),
+        ("", None),
+    ],
+)
+def test_sbi_counterparty(narration, expected):
+    assert sbi_cp(narration) == expected
