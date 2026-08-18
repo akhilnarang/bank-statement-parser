@@ -24,6 +24,9 @@ from bank_statement_parser.parsers.utils import (
     extract_reference_number,
     parse_date_text,
 )
+from bank_statement_parser.parsers.utils.uboi_counterparty import (
+    extract_counterparty,
+)
 
 _ACCOUNT_RE = re.compile(
     r"Account\s+Number\s*:\s*([\dX]+)",
@@ -267,6 +270,7 @@ class UboiBankStatementParser(GenericBankStatementParser):
                 BankTransaction(
                     date=date,
                     narration=narration,
+                    counterparty=extract_counterparty(narration, channel),
                     amount=amount,
                     transaction_type=direction,
                     balance=balance,

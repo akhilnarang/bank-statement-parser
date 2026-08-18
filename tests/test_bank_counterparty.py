@@ -21,6 +21,9 @@ from bank_statement_parser.parsers.utils.kotak_counterparty import (
 from bank_statement_parser.parsers.utils.slice_counterparty import (
     extract_counterparty as slice_cp,
 )
+from bank_statement_parser.parsers.utils.uboi_counterparty import (
+    extract_counterparty as uboi_cp,
+)
 
 # ---------------------------------------------------------------------------
 # IDFC
@@ -278,3 +281,38 @@ def test_hdfc_counterparty(narration, expected):
 
 def test_hdfc_returns_none_on_unknown_layout():
     assert hdfc_cp("RANDOM UNSTRUCTURED NARRATION") is None
+
+
+# ---------------------------------------------------------------------------
+# UBOI
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "narration,expected",
+    [
+        # UPI carries the CR/DR direction as seg 2; counterparty is seg 3.
+        ("UPIAB/100000000001/CR/JANE DOE/HDFC/jane@examplebank", "JANE DOE"),
+        ("UPIAR/100000000002/DR/JOHN DOE/INDB/ john@examplebank", "JOHN DOE"),
+        # IMPS counterparty is seg 2.
+        ("IMPSAB/100000000003/Mr JOHN DOE PLACEHO/9000000000", "Mr JOHN DOE PLACEHO"),
+        ("IMPSAR/100000000004/Jane Doe Placehol/000000000000", "Jane Doe Placehol"),
+        # POS: merchant is the first slash-segment.
+        ("POS:EXAMPLE MERCHANT/CITY/100000000005", "EXAMPLE MERCHANT"),
+        # NEFT/RTGS/NEFTO/CLG: name up to a trailing ref/IFSC/account token.
+        ("NEFT:ACME CORP PRIVATE LIMITED HDFC0000000",
+         "ACME CORP PRIVATE LIMITED"),
+        ("RTGS:Mr. JOHN DOE PLACEHO IDFB0000000000000000", "Mr. JOHN DOE PLACEHO"),
+        ("NEFTO-JANE DOE PLACEHOLDER 000000000000", "JANE DOE PLACEHOLDER"),
+        ("CLG:JOHN DOE PLACEHOLDER", "JOHN DOE PLACEHOLDER"),
+        # Fixed labels.
+        ("REFUND/100000000006/100000000007", "Refund"),
+        ("000000000000:Int.Pd:01-01- 2026 to 31-03-2026", "Interest"),
+    ],
+)
+def test_uboi_counterparty(narration, expected):
+    assert uboi_cp(narration) == expected
+
+
+def test_uboi_returns_none_on_unknown_layout():
+    assert uboi_cp("1000000000000000/000000000000/000000000000") is None
