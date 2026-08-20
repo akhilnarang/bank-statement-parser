@@ -15,8 +15,8 @@ Slice narration layouts (all dash-separated):
 - `IMPS Credit-<NAME>-<ifsc>-<masked_acct>-<rrn>[-<remark>]`
 - `<rrn>-Bill payment` / `Bill payment` / `bill payment refund` — Self
   (slice CC bill payment from your slice savings)
-- `Deposit` / `monies transfer` / `<rrn>-monies transfer` — Self
-  (internal slice savings actions)
+- `Deposit` / `<rrn>-Deposit` — Slice FD (money booked into a fixed deposit)
+- `monies transfer` / `<rrn>-monies transfer` — Self (internal slice savings)
 """
 
 import re
@@ -104,6 +104,7 @@ def _extract_rtgs(narration: str) -> str | None:
 
 _BILL_PAYMENT_LABEL = "Credit Card Bill Payment"
 _BILL_PAYMENT_REFUND_LABEL = "Credit Card Bill Payment (Refund)"
+_FD_LABEL = "Slice FD"
 
 
 def _classify_short_narration(narration: str) -> str | None:
@@ -115,8 +116,9 @@ def _classify_short_narration(narration: str) -> str | None:
       to an unspecified issuer (real external party but issuer unknown
       from the narration alone)
     - `bill payment refund` — reversal of the above
-    - `Deposit`, `<rrn>-monies transfer`, `Invite & earn`, `Interest Cr.
-      for <date>` — slice-internal credits or promo bonuses; map to Self
+    - `Deposit` — money booked into a fixed deposit; map to Slice FD
+    - `<rrn>-monies transfer`, `Invite & earn`, `Interest Cr. for <date>` —
+      slice-internal credits or promo bonuses; map to Self
     """
     head = narration.strip().upper()
     stripped = re.sub(r"^\d{9,}\s*-\s*", "", head)
@@ -124,7 +126,9 @@ def _classify_short_narration(narration: str) -> str | None:
         return _BILL_PAYMENT_LABEL
     if stripped == "BILL PAYMENT REFUND":
         return _BILL_PAYMENT_REFUND_LABEL
-    if stripped in {"DEPOSIT", "MONIES TRANSFER", "INVITE & EARN"}:
+    if stripped == "DEPOSIT":
+        return _FD_LABEL
+    if stripped in {"MONIES TRANSFER", "INVITE & EARN"}:
         return "Self"
     if head.startswith(("INTEREST CR.", "INTEREST CR ")):
         return "Self"

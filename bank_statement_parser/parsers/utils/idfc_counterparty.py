@@ -10,6 +10,7 @@ Narration layouts:
 - REF/POS-... (refund): `REF/POS-VISA/<merchant>/<rrn>/<mcc>/<date>`
 - IFT (intra-IDFC): `IFT/<id>/<seg2>/<id>/<seg4>`
 - FD creation: `FD <fd_number> Mr./Mrs./Ms. <name>`
+- FD maturity: `FD <fd_number> maturity :Account credited/Principal:.../...`
 - Transfer to deposit: `TRANSFER TO DEPOSIT: CHEQUE NO. <n>/FT From TO <src> to <dst>`
 
 Returns None when the narration is informational and doesn't match a
@@ -160,10 +161,12 @@ def _extract_ift(narration: str, direction: str | None) -> str | None:
     return seg2 or seg4
 
 
+_FD_LABEL = "IDFC FD"
 _FD_RE = re.compile(
     r"^\s*FD\s+\d+\s+(?:Mr\.?|Mrs\.?|Ms\.?|Dr\.?)\s+(.+?)\s*$",
     re.IGNORECASE,
 )
+_FD_MATURITY_RE = re.compile(r"^\s*FD\s+\d+\s+maturity\b", re.IGNORECASE)
 _TRANSFER_DEPOSIT_RE = re.compile(
     r"FT\s+From\s+TO\s+(?P<src>.+?)\s+to\s+(?P<dst>.+?)\s*$",
     re.IGNORECASE,
@@ -181,14 +184,16 @@ def _names_match(a: str, b: str) -> bool:
 
 
 def _extract_transfer_or_fd(narration: str) -> str | None:
-    """`FD <num> Mr. <name>` or `TRANSFER TO DEPOSIT: ... FT From TO <src> to <dst>`.
+    """`FD <num> ...` or `TRANSFER TO DEPOSIT: ... FT From TO <src> to <dst>`.
 
-    FD creation is always under the account holder's name, so returns Self.
-    Transfer-to-deposit is overwhelmingly self-FD; when src ~= dst (modulo
-    truncation), returns Self. Otherwise returns the destination name.
+    An FD booking (`FD <num> Mr. <name>`) or maturity (`FD <num> maturity ...`)
+    is the account holder's own deposit, so returns the "IDFC FD" label. The
+    downstream categorizer reads it as an investment (debit) or a redemption
+    (credit). Transfer-to-deposit is a cheque move, overwhelmingly self; when
+    src ~= dst (modulo truncation), returns Self. Otherwise the destination name.
     """
-    if _FD_RE.match(narration):
-        return "Self"
+    if _FD_RE.match(narration) or _FD_MATURITY_RE.match(narration):
+        return _FD_LABEL
 
     m = _TRANSFER_DEPOSIT_RE.search(narration)
     if m:

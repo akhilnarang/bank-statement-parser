@@ -100,8 +100,25 @@ from bank_statement_parser.parsers.utils.uboi_counterparty import (
         ("AddMoney/20260317252100/109 100818138/UPI", None, "credit", "Self"),
         ("MONTHLY SAVINGS INTEREST CREDIT", None, "credit", "Self"),
         ("DELAYINT_ICICR12026033109 896246_20260331", None, "credit", "Self"),
-        # FD creation always under account-holder name — Self
-        ("FD 10278100174 Mr. JOHN DOE", None, "debit", "Self"),
+        # FD booking and maturity — labeled "IDFC FD" so the categorizer reads
+        # the debit as an investment and the maturity credit as a redemption.
+        ("FD 12345678901 Mr. JOHN DOE", None, "debit", "IDFC FD"),
+        (
+            (
+                "FD 12345678901 maturity :Account credited/Principal:12345/"
+                "Gross Interest:67/TDS:0/Mr. JOHN DOE 01/01/2026"
+            ),
+            None,
+            "credit",
+            "IDFC FD",
+        ),
+        # Transfer-to-deposit is a cheque move, not an FD booking — stays Self.
+        (
+            "TRANSFER TO DEPOSIT: CHEQUE NO. 000099/FT From TO JOHN DOE to JOHN DOE",
+            None,
+            "debit",
+            "Self",
+        ),
         # Redemption fees
         (
             "Redemption Fees on FIRST Rewards/Inv2701261331170051/ 30-JAN-2026/",
@@ -226,7 +243,9 @@ def test_kotak_returns_none_on_unknown_layout():
         ("Payment", "Credit Card Bill Payment"),
         ("611400166935-Bill payment", "Credit Card Bill Payment"),
         ("bill payment refund", "Credit Card Bill Payment (Refund)"),
-        ("Deposit", "Self"),
+        # Deposit = money booked into a fixed deposit -> Slice FD
+        ("Deposit", "Slice FD"),
+        ("611400166935-Deposit", "Slice FD"),
         ("monies transfer", "Self"),
         ("611400166935-monies transfer", "Self"),
         ("Invite & earn", "Self"),

@@ -12,8 +12,18 @@ Each parser returns a `ParsedBankStatement` with:
 - `account_holder_name`, `account_number`
 - `statement_period_start`, `statement_period_end` (DD/MM/YYYY)
 - `opening_balance`, `closing_balance`
-- `transactions` — list of `BankTransaction` with date, narration, amount, debit/credit, running balance, reference number, channel (upi/neft/rtgs/imps/etc.)
+- `transactions` — list of `BankTransaction` with date, narration, amount, debit/credit, running balance, reference number, channel (upi/neft/rtgs/imps/etc.), and a `counterparty` derived from the narration
 - `reconciliation` — balance verification (`opening + credits - debits` vs `closing`, delta must be `0.00`)
+
+### Counterparty labels
+
+The per-bank counterparty extractor cleans a payee/beneficiary out of structured
+narrations. Two canonical labels replace an extracted name when the narration is
+about the account holder's own money:
+
+- `Self` — an internal move, cashback, or interest credit with no external party.
+- `<Bank> FD` (e.g. `IDFC FD`, `Slice FD`) — a fixed-deposit booking or maturity.
+  A booking debits the account; a maturity credits principal (and interest) back.
 
 ## Usage
 
