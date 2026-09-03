@@ -5,7 +5,13 @@ tables. pdfplumber finds no usable transaction tables — only single-row
 header/footer tables. Parsing uses word-line reconstruction.
 
 Layout:
-- Narration text spans multiple lines above/below the date line
+- Narration text spans multiple lines above/below the date line. The date,
+  mode and amount cells are vertically centred on the row, and the particulars
+  lines fill the row top-down at a fixed pitch. So the particulars lines of a
+  row are symmetric about its date: a row has as many lines below its date as
+  above it. Since July 2026 the first particulars line of a UPI/IMPS/NEFT row
+  is the counterparty name on its own line; it does not start with a channel
+  prefix, so only this symmetry tells it apart from the previous row's tail.
 - Date lines start with DD-MM-YYYY and contain amounts positioned at:
   - x < 420: deposit
   - 420 < x < 520: withdrawal
@@ -67,6 +73,33 @@ _TABLE_END_MARKERS = (
 # catch the footers we already know, so bound the walk structurally too — an
 # unrecognised footer then costs a few stray words, not the whole page.
 _MAX_CONTINUATION_LINES = 5
+
+# The particulars lines of a row are symmetric about its date baseline. A line
+# below the date belongs to the row when its distance from the date does not
+# exceed the distance of the row's first line above the date. The line pitch
+# is 8.47 points and offsets are multiples of half a pitch, so a margin under
+# half a pitch separates the last line of a row from the first line of the
+# next one.
+_MIRROR_TOLERANCE = 3.0
+
+# Header, section and footer lines between transactions. Anchor the keywords
+# to the start of the line, or match the full phrase, so a narration cannot
+# match by accident. A substring match read "UPI/.../MandateExe/AXIS" as a
+# header because "MandateExe" contains "DATE", and a bare whole-word match
+# would still drop a narration that holds the word "Total" or "Page".
+_HEADER_LINE_RE = re.compile(
+    r"^(?:DATE\b|(?:SUB |GRAND )?TOTAL\b|PAGE \d+ OF\b|STATEMENT OF TRANSACTIONS\b"
+    r"|ACCOUNT (?:DETAILS|HOLDERS|TYPE)\b|REGISTERED OFFICE\b"
+    r"|PLEASE CALL FROM YOUR REGISTERED\b)"
+    r"|\bNOMINATION\b|\bREGISTERED$"
+)
+
+# The vertical distance between two particulars lines of one row.
+_LINE_PITCH = 8.47
+
+# The PARTICULARS column starts at x = 136 (monthly) or 140 (yearly). The MODE
+# column ends before x = 130.
+_PARTICULARS_MIN_X = 130.0
 
 _THRESHOLDS = ColumnThresholds(
     deposit_max=420.0,
@@ -177,7 +210,9 @@ class IciciBankStatementParser(GenericBankStatementParser):
         # Collect transactions: each transaction spans a date line + surrounding
         # narration lines. We walk through lines, collecting narration text
         # between date lines.
-        pending_narration_above: list[str] = []
+        # (text, doctop) of the particulars lines seen since the last date
+        # row. The doctop gives the row's extent above its date baseline.
+        pending_narration_above: list[tuple[str, float]] = []
         i = 0
 
         while i < len(lines):
@@ -203,21 +238,7 @@ class IciciBankStatementParser(GenericBankStatementParser):
             if "STATEMENT OF LINKED FIXED DEPOSITS" in upper:
                 break
 
-            if any(
-                kw in upper
-                for kw in (
-                    "DATE",
-                    "PARTICULARS",
-                    "ACCOUNT DETAILS",
-                    "ACCOUNT HOLDERS",
-                    "STATEMENT OF TRANSACTIONS",
-                    "ACCOUNT TYPE",
-                    "TOTAL",
-                    "NOMINATION",
-                    "REGISTERED",
-                    "PAGE",
-                )
-            ):
+            if _HEADER_LINE_RE.search(upper):
                 pending_narration_above = []
                 i += 1
                 continue
@@ -230,7 +251,9 @@ class IciciBankStatementParser(GenericBankStatementParser):
                 # Filter out pure continuation hash/ref fragments
                 narr_text = joined.strip()
                 if narr_text and not narr_text.startswith("Total"):
-                    pending_narration_above.append(narr_text)
+                    pending_narration_above.append(
+                        (narr_text, float(line_words[0]["doctop"]))
+                    )
                 i += 1
                 continue
 
@@ -238,7 +261,12 @@ class IciciBankStatementParser(GenericBankStatementParser):
             deposit_amt = None
             withdrawal_amt = None
             balance_amt = None
+            # MODE column text ("MOBILE BANKING") and the particulars text on
+            # the date line. Keep them apart: the particulars text is the
+            # middle of a narration that wraps around the date line, and the
+            # mode text must not split it.
             mode_tokens: list[str] = []
+            inline_tokens: list[str] = []
 
             for w in line_words[1:]:  # skip the date token
                 # An amount token IS an amount — it does not merely contain
@@ -261,12 +289,13 @@ class IciciBankStatementParser(GenericBankStatementParser):
                         withdrawal_amt = amt_str
                     else:
                         balance_amt = amt_str
-                else:
-                    # Non-amount token on date line = mode or narration continuation
+                elif float(w["x0"]) < _PARTICULARS_MIN_X:
                     mode_tokens.append(w["text"])
+                else:
+                    inline_tokens.append(w["text"])
 
             # Check for B/F (Brought Forward) — opening balance
-            if "B/F" in " ".join(mode_tokens):
+            if "B/F" in " ".join(mode_tokens + inline_tokens):
                 opening_balance = balance_amt
                 pending_narration_above = []
                 i += 1
@@ -290,13 +319,24 @@ class IciciBankStatementParser(GenericBankStatementParser):
                 continue
 
             # Build narration: above-lines + mode tokens + below continuation lines
-            narration_parts = list(pending_narration_above)
-            if mode_tokens:
-                narration_parts.append(" ".join(mode_tokens))
+            date_line_y = float(line_words[0]["doctop"])
+            narration_parts = list(mode_tokens)
+            narration_parts.extend(text for text, _ in pending_narration_above)
+            narration_parts.extend(inline_tokens)
+            # The row extends as far below its date as it does above it. Only
+            # the lines that sit at the line pitch above the date count: a
+            # stray line further up is not part of the row and must not widen
+            # the window below the date.
+            above_span = 0.0
+            previous_y = date_line_y
+            for _, y in sorted(pending_narration_above, key=lambda item: -item[1]):
+                if previous_y - y > _LINE_PITCH + _MIRROR_TOLERANCE:
+                    break
+                above_span = date_line_y - y
+                previous_y = y
+            pending_narration_above = []
 
             # Collect continuation lines below (non-date, non-header lines)
-            date_line_y = float(line_words[0]["doctop"])
-            pending_narration_above = []
             i += 1
             continuation_lines = 0
             while i < len(lines):
@@ -317,42 +357,14 @@ class IciciBankStatementParser(GenericBankStatementParser):
                 # unrecognised footer swallows the page.
                 if continuation_lines >= _MAX_CONTINUATION_LINES:
                     break
-                if any(kw in next_upper for kw in ("DATE", "PAGE")):
+                if _HEADER_LINE_RE.search(next_upper):
                     i += 1
                     continue
-                # ICICI renders a transaction's leading narration on the line
-                # above its date row. A particulars line that starts with a
-                # channel prefix can therefore belong to the current row or the
-                # next one. Assign the line to the nearer date baseline. The row
-                # spacing gives the answer.
-                if re.match(
-                    r"^(UPI|NEFT|IMPS|MMT|RTGS|POS|ATM|ACH|NACH|CLG/|SI/|FT/|VISA|BIL)",
-                    next_joined,
-                    re.IGNORECASE,
-                ):
-                    narration_y = float(lines[i][0]["doctop"])
-                    next_date_y = next(
-                        (
-                            float(future_line[0]["doctop"])
-                            for future_line in lines[i + 1 :]
-                            if future_line
-                            and parse_date_text(
-                                future_line[0]["text"],
-                                format_hints=["%d-%m-%Y"],
-                            )
-                        ),
-                        None,
-                    )
-                    if (
-                        next_date_y is not None
-                        and narration_y - date_line_y < next_date_y - narration_y
-                    ):
-                        narration_parts.append(next_joined.strip())
-                        i += 1
-                        continue
-                    # The line is the start of the narration for the next date.
-                    pending_narration_above.append(next_joined.strip())
-                    i += 1
+                # A line further below the date than the row's first line is
+                # above it belongs to the next row. Leave it for the outer
+                # loop, which collects it as that row's leading narration.
+                narration_y = float(lines[i][0]["doctop"])
+                if narration_y - date_line_y > above_span + _MIRROR_TOLERANCE:
                     break
                 # The line continues the narration of the current row.
                 narration_parts.append(next_joined.strip())

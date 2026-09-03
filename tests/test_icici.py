@@ -170,17 +170,24 @@ def _build_raw_data() -> dict[str, Any]:
 
 
 def _build_narration_partition_words() -> list[dict[str, Any]]:
-    """Build rows that keep the real ICICI below-date and above-date geometry."""
+    """Rows in the real ICICI geometry of July 2026.
+
+    The particulars lines of a row are centred on its date at an 8.47-point
+    pitch. A UPI or IMPS row starts with the counterparty name on its own
+    line. That line has no channel prefix. Only the symmetry about the date
+    tells it apart from the previous row's last line.
+    """
     words: list[dict[str, Any]] = []
 
     def add_line(y: float, *tokens: tuple[str, float]) -> None:
         for text, x0 in tokens:
             words.append(_word(text, x0, y))
 
-    # Two MOBILE BANKING credits. The particulars start below the date
-    # baseline. The 4.24-point gap keeps each MMT line in the current row.
+    # Two MOBILE BANKING credits. Each has two particulars lines: the name
+    # above the date and the MMT line below it, 4.24 points either side.
+    add_line(1370.20, ("SAMPLE", 136.3), ("PERSON", 161.0))
     add_line(
-        1374.44,
+        1374.43,
         ("13-07-2026", 29.8),
         ("MOBILE", 71.0),
         ("BANKING", 94.2),
@@ -188,16 +195,16 @@ def _build_narration_partition_words() -> list[dict[str, Any]]:
         ("2,200.00", 526.8),
     )
     add_line(
-        1378.68,
+        1378.67,
         ("MMT/IMPS/611111111111/Self", 136.3),
         ("transfer/SAMPLE", 236.7),
         ("PERSON/DEMO", 285.7),
         ("Bank", 324.1),
     )
-    add_line(1382.92, ("SAMPLE", 136.3), ("PERSON", 158.0))
 
+    add_line(1387.14, ("SAMPLE", 136.3), ("PERSON", 161.0))
     add_line(
-        1391.38,
+        1391.37,
         ("13-07-2026", 29.8),
         ("MOBILE", 71.0),
         ("BANKING", 94.2),
@@ -205,16 +212,15 @@ def _build_narration_partition_words() -> list[dict[str, Any]]:
         ("3,000.00", 526.8),
     )
     add_line(
-        1395.62,
+        1395.61,
         ("MMT/IMPS/622222222222/Test/SAMPLE", 136.3),
         ("PERSON/DEMO", 261.9),
         ("Bank", 315.3),
     )
 
-    # This row has inline particulars. Its continuation stays below. The
-    # distant UPI line is nearer to the next bare date row. Assign it there.
+    # A one-line netbanking row. It has no name line and no continuation.
     add_line(
-        1405.51,
+        1405.52,
         ("13-07-2026", 29.8),
         ("BIL/INFT/TEST000001/", 136.3),
         ("SAMPLE", 211.5),
@@ -222,20 +228,25 @@ def _build_narration_partition_words() -> list[dict[str, Any]]:
         ("500.00", 376.0),
         ("3,500.00", 526.8),
     )
-    add_line(1409.75, ("SAMPLE", 136.3), ("PERSON", 161.0))
+
+    # A four-line UPI row: name, UPI line, then two lines below the date.
+    # Its name line sits 9.9 points below the one-line row above it.
+    add_line(1415.42, ("OTHER", 136.3), ("PERSON", 161.0))
     add_line(
-        1423.87,
-        ("UPI/SAMPLE", 136.3),
-        ("PERSON/633333333333@demo/Paid", 174.3),
+        1423.89,
+        ("UPI/OTHER", 136.3),
+        ("PERS/633333333333@demo/Paid", 174.3),
         ("via", 263.7),
-        ("DEMO", 275.0),
+        ("C/DEMO", 275.0),
     )
     add_line(
-        1428.11,
+        1428.13,
         ("14-07-2026", 29.8),
         ("100.00", 385.0),
         ("3,600.00", 526.8),
     )
+    add_line(1432.36, ("BANK/633333333333/DEMO0000000000000000", 136.3))
+    add_line(1440.83, ("3", 136.3))
 
     return words
 
@@ -281,7 +292,7 @@ def test_synthetic_statement_reconciles() -> None:
     assert parsed.reconciliation.reconciled is True
 
 
-def test_narration_is_partitioned_by_nearest_date_baseline() -> None:
+def test_leading_name_line_belongs_to_its_own_row() -> None:
     parser = IciciBankStatementParser()
     transactions, _ = parser._parse_icici_page(_build_narration_partition_words())
 
@@ -297,10 +308,132 @@ def test_narration_is_partitioned_by_nearest_date_baseline() -> None:
         "500.00",
         "100.00",
     ]
-    assert "MMT/IMPS/611111111111" in transactions[0].narration
-    assert "MMT/IMPS/622222222222" in transactions[1].narration
-    assert "UPI/SAMPLE" not in transactions[2].narration
-    assert transactions[3].narration.startswith("UPI/SAMPLE")
+    narrations = [transaction.narration for transaction in transactions]
+    # The MODE column text leads; it never splits the particulars text.
+    assert narrations[0] == (
+        "MOBILE BANKING SAMPLE PERSON "
+        "MMT/IMPS/611111111111/Self transfer/SAMPLE PERSON/DEMO Bank"
+    )
+    assert narrations[1] == (
+        "MOBILE BANKING SAMPLE PERSON MMT/IMPS/622222222222/Test/SAMPLE PERSON/DEMO Bank"
+    )
+    # The one-line row keeps nothing from the row below it.
+    assert narrations[2] == "BIL/INFT/TEST000001/ SAMPLE PERSON"
+    assert transactions[2].counterparty == "SAMPLE PERSON"
+    assert narrations[3] == (
+        "OTHER PERSON UPI/OTHER PERS/633333333333@demo/Paid via C/DEMO "
+        "BANK/633333333333/DEMO0000000000000000 3"
+    )
+
+
+def _build_single_line_then_name_line_words() -> list[dict[str, Any]]:
+    """The August 2026 shape: a one-line cash deposit, then an IMPS credit
+    whose remitter name is its first line. The name line is 9.9 points below
+    the deposit's date and 8.47 above the IMPS date."""
+    words: list[dict[str, Any]] = []
+
+    def add_line(y: float, *tokens: tuple[str, float]) -> None:
+        for text, x0 in tokens:
+            words.append(_word(text, x0, y))
+
+    add_line(
+        1320.80,
+        ("19-08-2026", 29.8),
+        ("ICICI", 71.0),
+        ("CRM", 94.2),
+        ("CAM/00000AAA/CASH", 136.3),
+        ("DEP-Other/19-08-26/0000", 210.0),
+        ("2,500.00", 370.4),
+        ("5,500.00", 526.8),
+    )
+    add_line(1330.71, ("DEMO", 136.3), ("BROKING", 161.0), ("LIMITED", 200.0))
+    add_line(
+        1339.18,
+        ("21-08-2026", 29.8),
+        ("MOBILE", 71.0),
+        ("BANKING", 94.2),
+        ("MMT/IMPS/644444444444/20260821abc/DEMO", 136.3),
+        ("BR/Yes", 300.0),
+        ("300.00", 370.4),
+        ("5,800.00", 526.8),
+    )
+    add_line(1347.65, ("Bank", 138.1))
+    return words
+
+
+def test_single_line_row_does_not_absorb_the_next_name_line() -> None:
+    parser = IciciBankStatementParser()
+    transactions, _ = parser._parse_icici_page(
+        _build_single_line_then_name_line_words()
+    )
+
+    assert len(transactions) == 2
+    deposit, imps = transactions
+    assert deposit.narration == "ICICI CRM CAM/00000AAA/CASH DEP-Other/19-08-26/0000"
+    assert "BROKING" not in deposit.narration
+    assert imps.narration == (
+        "MOBILE BANKING DEMO BROKING LIMITED "
+        "MMT/IMPS/644444444444/20260821abc/DEMO BR/Yes Bank"
+    )
+    assert imps.reference_number == "644444444444"
+
+
+def _build_header_word_inside_narration_words() -> list[dict[str, Any]]:
+    """A UPI row whose name line holds "MandateExe". The word contains "DATE".
+    Read as a header, the line is dropped and the row below it then has no
+    extent above its date, so its own continuation slips into the next row."""
+    words: list[dict[str, Any]] = []
+
+    def add_line(y: float, *tokens: tuple[str, float]) -> None:
+        for text, x0 in tokens:
+            words.append(_word(text, x0, y))
+
+    add_line(
+        14530.22,
+        ("UPI/Demo", 140.3),
+        ("Sto/store@demo/MandateExe/DEMO", 190.0),
+    )
+    add_line(
+        14538.69,
+        ("04-11-2025", 29.8),
+        ("BANK/765000000000/DEMO000000000000000000000", 140.3),
+        ("2.00", 470.0),
+        ("1,000.00", 526.8),
+    )
+    add_line(14547.16, ("19c1/", 140.3))
+    add_line(
+        14555.63,
+        ("UPI/Demo", 140.3),
+        ("Pay/pay@demo/UPI/DEMO", 190.0),
+    )
+    add_line(
+        14564.10,
+        ("04-11-2025", 29.8),
+        ("BANK/765111111111/DEMO111111111111111111111", 140.3),
+        ("2.00", 385.0),
+        ("1,002.00", 526.8),
+    )
+    add_line(14572.58, ("6cb61", 140.3))
+    return words
+
+
+def test_a_narration_word_that_contains_a_header_keyword_is_kept() -> None:
+    parser = IciciBankStatementParser()
+    transactions, _ = parser._parse_icici_page(
+        _build_header_word_inside_narration_words()
+    )
+
+    assert len(transactions) == 2
+    first, second = transactions
+    assert first.narration == (
+        "UPI/Demo Sto/store@demo/MandateExe/DEMO "
+        "BANK/765000000000/DEMO000000000000000000000 19c1/"
+    )
+    assert first.reference_number == "765000000000"
+    assert first.counterparty == "Demo Sto"
+    assert second.narration == (
+        "UPI/Demo Pay/pay@demo/UPI/DEMO BANK/765111111111/DEMO111111111111111111111 6cb61"
+    )
 
 
 def _build_linked_fd_section_words() -> list[dict[str, Any]]:
@@ -326,7 +459,11 @@ def _build_linked_fd_section_words() -> list[dict[str, Any]]:
 
     # B/F opening. The account, amount, and date values are fabricated.
     y = 120.0
-    words += [_word("01-01-2020", 30.0, y), _word("B/F", 140.0, y), _word("1,000.00", 540.0, y)]
+    words += [
+        _word("01-01-2020", 30.0, y),
+        _word("B/F", 140.0, y),
+        _word("1,000.00", 540.0, y),
+    ]
 
     # One savings credit: 1,000.00 + 250.00 = 1,250.00.
     y = 140.0
@@ -359,7 +496,11 @@ def _build_linked_fd_section_words() -> list[dict[str, Any]]:
     ):
         words.append(_word(token, x, y))
     y = 200.0
-    words += [_word("888888888888", 136.0, y), _word("NEW", 240.0, y), _word("ACCOUNT", 265.0, y)]
+    words += [
+        _word("888888888888", 136.0, y),
+        _word("NEW", 240.0, y),
+        _word("ACCOUNT", 265.0, y),
+    ]
     y = 220.0
     words += [
         _word("09-01-2020", 30.0, y),
@@ -378,7 +519,9 @@ def test_linked_fd_section_is_not_parsed_as_savings() -> None:
     transactions, _opening = parser._parse_icici_page(_build_linked_fd_section_words())
 
     # Keep only the one savings row. Exclude the FD row after the Total.
-    assert [t.amount for t in transactions] == ["250.00"], [t.narration for t in transactions]
+    assert [t.amount for t in transactions] == ["250.00"], [
+        t.narration for t in transactions
+    ]
     assert transactions[-1].balance == "1,250.00"
 
 
@@ -411,14 +554,16 @@ def _build_embedded_amount_raw_data() -> dict[str, Any]:
     words.append(_word("B/F", 140.0, y))
     words.append(_word("11,111.00", 540.0, y))
 
-    # Credit whose narration token carries an embedded "01.02" date fragment
+    # Credit whose narration token carries an embedded "01.02" date fragment.
+    # Three particulars lines centred on the date: the remitter name above,
+    # the token on the date line, a continuation fragment below.
     y = 140.0
+    words.append(_word("REMITTER NAME", 140.0, y - 8.47))
     words.append(_word("15-04-2026", 30.0, y))
     words.append(_word("SENDER/707070/UBI/01.02.2099445566778899001122", 140.0, y))
     words.append(_word("7,777.00", 380.0, y))
     words.append(_word("18,888.00", 540.0, y))
-    y = 150.0  # continuation fragment
-    words.append(_word("987654321098", 140.0, y))
+    words.append(_word("987654321098", 140.0, y + 8.47))
 
     full_text = (
         "Savings Account XXXXXXXX9999\n"
@@ -426,6 +571,7 @@ def _build_embedded_amount_raw_data() -> dict[str, Any]:
         "period April 01, 2026 - April 30, 2026\n"
         "DATE PARTICULARS DEPOSIT WITHDRAWAL BALANCE\n"
         "01-04-2026 B/F 11,111.00\n"
+        "REMITTER NAME\n"
         "15-04-2026 SENDER/707070/UBI/01.02.2099445566778899001122 7,777.00 18,888.00\n"
         "987654321098\n"
     )
@@ -477,25 +623,23 @@ def _build_clg_clearing_raw_data() -> dict[str, Any]:
     words.append(_word("B/F", 140.0, y))
     words.append(_word("44,000.00", 540.0, y))
 
-    # Txn A — a transfer with its own below-continuation fragment
+    # Txn A — a transfer with two particulars lines, 4.24 points either side
+    # of the date. The date line itself holds no particulars.
     y = 140.0
+    words.append(_word("BIL/INFT/EKI0000001/Gift/", 140.0, y - 4.24))
     words.append(_word("14-04-2026", 30.0, y))
-    words.append(_word("BIL/INFT/EKI0000001/Gift/", 140.0, y))
     words.append(_word("8,800.00", 380.0, y))
     words.append(_word("52,800.00", 540.0, y))
-    y = 150.0  # genuine continuation of Txn A
-    words.append(_word("zz99", 140.0, y))
+    words.append(_word("zz99", 140.0, y + 4.24))
 
     # Txn B — cheque clearing: narration starts on the line ABOVE the date row
-    y = 160.0
-    words.append(_word("CLG/PAYEE NAME", 140.0, y))
     y = 170.0
+    words.append(_word("CLG/PAYEE NAME", 140.0, y - 8.47))
     words.append(_word("15-04-2026", 30.0, y))
     words.append(_word("PAYER/636363/HDF/02.03.2099889900112233", 140.0, y))
     words.append(_word("3,300.00", 380.0, y))
     words.append(_word("56,100.00", 540.0, y))
-    y = 180.0  # below-continuation of Txn B
-    words.append(_word("778899001122", 140.0, y))
+    words.append(_word("778899001122", 140.0, y + 8.47))
 
     full_text = (
         "Savings Account XXXXXXXX9999\n"
@@ -503,7 +647,8 @@ def _build_clg_clearing_raw_data() -> dict[str, Any]:
         "period April 01, 2026 - April 30, 2026\n"
         "DATE PARTICULARS DEPOSIT WITHDRAWAL BALANCE\n"
         "01-04-2026 B/F 44,000.00\n"
-        "14-04-2026 BIL/INFT/EKI0000001/Gift/ 8,800.00 52,800.00\n"
+        "BIL/INFT/EKI0000001/Gift/\n"
+        "14-04-2026 8,800.00 52,800.00\n"
         "zz99\n"
         "CLG/PAYEE NAME\n"
         "15-04-2026 PAYER/636363/HDF/02.03.2099889900112233 3,300.00 56,100.00\n"
@@ -666,3 +811,87 @@ def test_an_unrecognised_footer_is_still_bounded() -> None:
     narration = parsed.transactions[0].narration
     assert narration.count("boilerplate") <= 5, narration
     assert len(narration) < 200, narration
+
+
+def _build_stray_line_words() -> list[dict[str, Any]]:
+    """A stray line far above a two-line row. The stray line must not widen
+    the row's window below its date, or the next row's name line is absorbed."""
+    words: list[dict[str, Any]] = []
+
+    def add_line(y: float, *tokens: tuple[str, float]) -> None:
+        for text, x0 in tokens:
+            words.append(_word(text, x0, y))
+
+    add_line(1340.00, ("stray", 136.3), ("notice", 170.0))
+    add_line(1367.46, ("BIL/NEFT/IN12600000000002/Self/SAMPLE", 136.3))
+    add_line(
+        1371.70,
+        ("21-08-2026", 29.8),
+        ("700.00", 470.0),
+        ("2,300.00", 526.8),
+    )
+    add_line(1375.93, ("PERS/DEMO", 136.3), ("BANK", 190.0), ("LTD", 220.0))
+    add_line(1384.40, ("Sample", 136.3), ("Person", 170.0))
+    add_line(1392.87, ("UPI/Sample", 136.3), ("Pers/sample@demo/Self/State", 190.0))
+    add_line(
+        1397.11,
+        ("22-08-2026", 29.8),
+        ("400.00", 470.0),
+        ("1,900.00", 526.8),
+    )
+    add_line(1401.35, ("Bank/655555555555/DEMO0000000000000000", 136.3))
+    add_line(1409.82, ("80", 136.3))
+    return words
+
+
+def test_a_stray_line_above_a_row_does_not_widen_its_window() -> None:
+    parser = IciciBankStatementParser()
+    transactions, _ = parser._parse_icici_page(_build_stray_line_words())
+
+    assert len(transactions) == 2
+    first, second = transactions
+    assert first.narration.endswith(
+        "BIL/NEFT/IN12600000000002/Self/SAMPLE PERS/DEMO BANK LTD"
+    )
+    assert "Sample Person" not in first.narration
+    assert second.narration == (
+        "Sample Person UPI/Sample Pers/sample@demo/Self/State "
+        "Bank/655555555555/DEMO0000000000000000 80"
+    )
+
+
+def test_header_keywords_inside_a_narration_do_not_drop_the_line() -> None:
+    parser = IciciBankStatementParser()
+    words: list[dict[str, Any]] = []
+
+    def add_line(y: float, *tokens: tuple[str, float]) -> None:
+        for text, x0 in tokens:
+            words.append(_word(text, x0, y))
+
+    add_line(
+        1423.89,
+        ("UPI/Page", 136.3),
+        ("Total/pt@demo/Total", 180.0),
+        ("Page/DEMO", 260.0),
+    )
+    add_line(
+        1428.13,
+        ("14-07-2026", 29.8),
+        ("100.00", 385.0),
+        ("3,600.00", 526.8),
+    )
+    add_line(1432.36, ("BANK/633333333333/DEMO0000000000000000", 136.3))
+    add_line(
+        1444.94,
+        ("Total:", 139.2),
+        ("100.00", 367.0),
+        ("0.00", 450.0),
+        ("3,600.00", 531.0),
+    )
+
+    transactions, _ = parser._parse_icici_page(words)
+
+    assert len(transactions) == 1
+    assert transactions[0].narration == (
+        "UPI/Page Total/pt@demo/Total Page/DEMO BANK/633333333333/DEMO0000000000000000"
+    )

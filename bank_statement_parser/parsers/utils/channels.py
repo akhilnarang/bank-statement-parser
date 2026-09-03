@@ -74,6 +74,14 @@ _BIL_REF_PATTERN = re.compile(
     r"\bBIL\s*/\s*(?:INFT|ONL)\s*/\s*([A-Z0-9]{6,20})\b", re.IGNORECASE
 )
 
+# A NEFT or RTGS sent from net banking: `BIL/(NEFT|RTGS)/<ref>/...`. The ref is
+# the bank's own transfer id (for example "IN12600000000001"), not a UTR. The
+# bank's SMS alert for the same transfer carries this id, so it is the key
+# that joins the statement row to the alert.
+_BIL_TRANSFER_REF_PATTERN = re.compile(
+    r"\bBIL\s*/\s*(?:NEFT|RTGS)\s*/\s*([A-Z0-9]{6,20})\b", re.IGNORECASE
+)
+
 
 def detect_channel(narration: str) -> str | None:
     """Detect transaction channel from narration text."""
@@ -97,6 +105,9 @@ def extract_reference_number(narration: str, channel: str | None = None) -> str 
     ch = channel.lower() if channel else None
 
     if ch in {"neft", "rtgs"}:
+        match = _BIL_TRANSFER_REF_PATTERN.search(narration)
+        if match:
+            return match.group(1)
         match = _UTR_PATTERN.search(narration)
         if match:
             return re.sub(r"\s+", "", match.group(1))

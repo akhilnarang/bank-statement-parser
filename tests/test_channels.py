@@ -195,3 +195,8 @@ def test_neft_falls_back_to_digit_rrn_when_no_utr_present() -> None:
     bare. Digit-run fallback still kicks in for known payment channels."""
     narration = "NEFT inward 100200300400 from XYZ"
     assert extract_reference_number(narration, "neft") == "100200300400"
+
+
+def test_net_banking_neft_keeps_the_bank_transfer_id_as_reference() -> None:
+    narration = "BIL/NEFT/IN12600000000001/Self transfer/SAMPLE PERS/DEMO BANK LTD"
+    assert extract_reference_number(narration, "neft") == "IN12600000000001"
