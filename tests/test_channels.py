@@ -140,6 +140,24 @@ CASES: list[tuple[str, str | None, str | None]] = [
         "neft",
         "IJKLP00756133514",
     ),
+    # Slash-form UTRs that _UTR_PATTERN misses: a 2-letter prefix, and a
+    # letter inside the digits.
+    (
+        "NEFT/XY10000000000001/SAMPLE PA YER/ABCD0SF0002/NEFT// sample remark",
+        "neft",
+        "XY10000000000001",
+    ),
+    (
+        "NEFT/ABCD1234M5678901/SAMPLE PAYEE/EFGH0000004/sample remark",
+        "neft",
+        "ABCD1234M5678901",
+    ),
+    # An account number in the slash slot is not a ref. The UTR later wins.
+    (
+        "NEFT/12345678901234/SAMPLE BANK/ABCDN12025010100012345/payee",
+        "neft",
+        "ABCDN12025010100012345",
+    ),
     # Non-payment narrations: cheque clearing, bill pay, interest credit, etc.
     # These have digit runs (cheque numbers, dates, account numbers) that the old
     # blanket regex would falsely pick up. `cheque` is not a ref-bearing channel,

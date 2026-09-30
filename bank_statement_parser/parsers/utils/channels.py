@@ -82,6 +82,29 @@ _BIL_TRANSFER_REF_PATTERN = re.compile(
     r"\bBIL\s*/\s*(?:NEFT|RTGS)\s*/\s*([A-Z0-9]{6,20})\b", re.IGNORECASE
 )
 
+# Slash form `(NEFT|RTGS)/<ref>/...`: the ref is token #2. Some UTRs do not fit
+# _UTR_PATTERN (for example a 2-letter prefix, or a letter inside the digits).
+# The token must be 12-22 characters after a stray space is removed, so an
+# 11-char IFSC in that slot does not qualify. It must also contain a letter, so
+# an all-digit account number in that slot does not qualify.
+_SLASH_TRANSFER_REF_PATTERN = re.compile(
+    r"^\s*(?:NEFT|RTGS)\s*/\s*([A-Z0-9]+(?:\s[A-Z0-9]+)?)\s*/"
+)
+
+
+def _slash_transfer_ref(narration: str) -> str | None:
+    match = _SLASH_TRANSFER_REF_PATTERN.search(narration)
+    if not match:
+        return None
+    ref = re.sub(r"\s+", "", match.group(1))
+    if (
+        12 <= len(ref) <= 22
+        and sum(c.isdigit() for c in ref) >= 6
+        and any(c.isalpha() for c in ref)
+    ):
+        return ref
+    return None
+
 
 def detect_channel(narration: str) -> str | None:
     """Detect transaction channel from narration text."""
@@ -111,6 +134,9 @@ def extract_reference_number(narration: str, channel: str | None = None) -> str 
         match = _UTR_PATTERN.search(narration)
         if match:
             return re.sub(r"\s+", "", match.group(1))
+        ref = _slash_transfer_ref(narration)
+        if ref:
+            return ref
         match = _DIGIT_RRN_PATTERN.search(narration)
         return match.group(1) if match else None
 
