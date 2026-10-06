@@ -2,7 +2,7 @@
 
 Parses bank account statement PDFs (savings/current accounts) into structured output for reconciliation and analysis. Parallel to [`cc-parser`](https://github.com/akhilnarang/cc-parser) but for bank account statements instead of credit card statements.
 
-Supported banks: HDFC, ICICI, IDFC FIRST, IndusInd, Kotak Mahindra, Slice, Union Bank of India.
+Supported banks: HDFC, ICICI, IDFC FIRST, IndusInd, Kotak Mahindra, Slice, State Bank of India (monthly e-statement and YONO "Statement of Account" download), Union Bank of India.
 
 Adding a new bank? Use the skill at `.agents/skills/add-bank-parser/` to guide the process.
 
@@ -28,7 +28,7 @@ about the account holder's own money:
 ## Usage
 
 ```bash
-uv run bank-statement-parser /path/to/statement.pdf --bank {hdfc|icici|idfc|indusind|slice|uboi}
+uv run bank-statement-parser /path/to/statement.pdf --bank {hdfc|icici|idfc|indusind|kotak|sbi|slice|uboi}
 ```
 
 Optional flags:
