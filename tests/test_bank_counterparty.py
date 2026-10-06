@@ -341,7 +341,7 @@ def test_uboi_returns_none_on_unknown_layout():
 
 
 # ---------------------------------------------------------------------------
-# SBI (UPI-only; every other layout falls back to the raw narration)
+# SBI (UPI, IMPS, NEFT and card; other layouts fall back to the raw narration)
 # ---------------------------------------------------------------------------
 
 
@@ -353,7 +353,14 @@ def test_uboi_returns_none_on_unknown_layout():
         ("UPI/DR/100000000002/JOHN DOE/ICIC/john@examplebank/Paid", "JOHN DOE"),
         # No CR/DR marker -> not the mapped layout.
         ("UPI/jane@examplebank/Payment/HDFC/100000000003", None),
-        # Non-UPI layouts are deliberately unmapped.
+        # A transfer label before the UPI layout is skipped.
+        ("TO TRANSFER-UPI/DR/100000000005/JOHN DOE/ICIC/john@x/Paid", "JOHN DOE"),
+        ("IMPS/100000000006/EXB-XX123-JANE DOE/Remark", "JANE DOE"),
+        ("NEFT*EXBK0000001*EXBK1234567890*JOHN DOE", "JOHN DOE"),
+        # Card purchase: merchant after the RRN, last token (city) dropped.
+        ("OTHPG 100000000007EXAMPLE STORE CITY", "EXAMPLE STORE"),
+        ("OTHPG 100000000008MERCHANT", "MERCHANT"),
+        # Other layouts are deliberately unmapped.
         ("NEFT SOME COUNTERPARTY 100000000004", None),
         ("", None),
     ],
