@@ -324,7 +324,10 @@ class IdfcBankStatementParser(GenericBankStatementParser):
         # Determine column mapping from header
         header = table[header_idx]
         cols = self._classify_idfc_columns(header)
-        if cols is None:
+        # A merged table has no date column. Its dates come from word
+        # positions in _parse_idfc_merged_table. Narration text can hold
+        # date-like fragments, so do not search it for dates.
+        if cols is None or "merged" in cols:
             return txns
 
         # Parse data rows after header
@@ -366,8 +369,8 @@ class IdfcBankStatementParser(GenericBankStatementParser):
             elif "BALANCE" in upper:
                 cols["balance"] = i
 
-        # For the 5-col merged layout (page 1), the first column contains
-        # the merged value_date + narration. Try to work with it.
+        # The 5-col merged layout (page 1) has no date column. Mark it so
+        # the caller sends it to the word-position parser.
         if "date" not in cols and "debit" in cols:
             # Merged layout — no clean date column
             cols["merged"] = 0
@@ -399,16 +402,6 @@ class IdfcBankStatementParser(GenericBankStatementParser):
             parts = date_cell.split("\n")
             date_str = parse_date_text(parts[0].strip(), format_hints=_IDFC_DATE_HINTS)
             # Time is in the second line (e.g., "22:38") but not used in output
-        elif "merged" in cols:
-            # Merged layout — try to find date in the cell text
-            merged_cell = str(row[cols["merged"]] or "").strip()
-            if not merged_cell:
-                return None
-            # Look for "DD Mon YY" pattern in the text
-            m = re.search(r"(\d{2}\s+[A-Za-z]{3}\s+\d{2})", merged_cell)
-            if not m:
-                return None
-            date_str = parse_date_text(m.group(1), format_hints=_IDFC_DATE_HINTS)
 
         if not date_str:
             # Check for special rows like "opening balance"
