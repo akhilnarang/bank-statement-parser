@@ -1,7 +1,5 @@
 """Helpers for x-position based parser layouts."""
 
-from __future__ import annotations
-
 from dataclasses import dataclass
 
 

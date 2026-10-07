@@ -1,7 +1,5 @@
 """Shared channel, reference, and month helpers."""
 
-from __future__ import annotations
-
 import re
 
 MONTH_ABBREVS = {

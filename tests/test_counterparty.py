@@ -5,8 +5,6 @@ Names, account numbers, RRNs/UTRs, IFSC codes, and merchant identifiers
 are fabricated.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from bank_statement_parser.parsers.utils.counterparty import extract_counterparty

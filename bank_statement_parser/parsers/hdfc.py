@@ -17,8 +17,6 @@ HDFC bank statements have a highly compressed table layout:
 - Summary row on last page: Opening Balance / Debit / Credit / Closing
 """
 
-from __future__ import annotations
-
 import re
 from decimal import Decimal
 from typing import Any

@@ -1,7 +1,5 @@
 """IDFC page-1 merged table: dates come from word positions, not narration."""
 
-from __future__ import annotations
-
 from bank_statement_parser.parsers.idfc import IdfcBankStatementParser
 
 

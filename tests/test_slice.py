@@ -11,8 +11,6 @@ typically contain the sender account number, not the IMPS RRN, and
 extracting that as a UTR would introduce false uniqueness.
 """
 
-from __future__ import annotations
-
 from bank_statement_parser.parsers.slice import _select_reference
 
 

@@ -5,8 +5,6 @@ real fixtures; these tests pin the smaller behaviours each helper
 guarantees so refactors stay safe.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from bank_statement_parser.parsers.utils.hdfc_counterparty import (

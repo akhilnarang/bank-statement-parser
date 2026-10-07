@@ -6,8 +6,6 @@ banks). Returns None when the layout doesn't match — callers fall back to
 the raw narration.
 """
 
-from __future__ import annotations
-
 import re
 
 from bank_statement_parser.parsers.utils.channels import (

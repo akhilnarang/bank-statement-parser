@@ -1,7 +1,5 @@
 """Parser registry and supported bank slug helpers."""
 
-from __future__ import annotations
-
 from bank_statement_parser.parsers.base import BankStatementParser
 from bank_statement_parser.parsers.hdfc import HdfcBankStatementParser
 from bank_statement_parser.parsers.icici import IciciBankStatementParser

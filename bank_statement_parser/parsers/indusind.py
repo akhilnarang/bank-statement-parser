@@ -18,8 +18,6 @@ Metadata:
 - Period: "Statement Period : DD-Mon-YYYY TO DD-Mon-YYYY"
 """
 
-from __future__ import annotations
-
 import re
 from typing import Any
 
