@@ -9,8 +9,6 @@ UBOI bank statements have a clean 7-column table:
 - Statement period in header: "01-03-2026 TO 31-03-2026"
 """
 
-from __future__ import annotations
-
 import re
 from typing import Any
 

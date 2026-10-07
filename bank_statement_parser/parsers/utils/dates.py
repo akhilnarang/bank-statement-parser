@@ -1,7 +1,5 @@
 """Date parsing helpers backed by python-dateutil."""
 
-from __future__ import annotations
-
 import re
 from datetime import date, datetime
 

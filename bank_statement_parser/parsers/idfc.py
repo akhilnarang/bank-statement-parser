@@ -11,8 +11,6 @@ IDFC bank statements have:
 - Page 1 table extraction is often malformed; page 2+ tables are clean
 """
 
-from __future__ import annotations
-
 import re
 from typing import Any
 

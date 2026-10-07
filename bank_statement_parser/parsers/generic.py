@@ -1,7 +1,5 @@
 """Generic bank account statement parser."""
 
-from __future__ import annotations
-
 from typing import Any
 
 from bank_statement_parser.models import BankTransaction, ParsedBankStatement

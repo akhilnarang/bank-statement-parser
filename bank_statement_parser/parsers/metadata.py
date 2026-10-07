@@ -1,7 +1,5 @@
 """Shared statement metadata extraction helpers."""
 
-from __future__ import annotations
-
 import re
 
 from bank_statement_parser.parsers.utils import parse_date_text

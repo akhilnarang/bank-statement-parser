@@ -1,7 +1,5 @@
 """Shared reconciliation and transaction summarization helpers."""
 
-from __future__ import annotations
-
 from decimal import Decimal
 
 from bank_statement_parser.models import BankReconciliation, BankTransaction

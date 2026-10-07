@@ -16,8 +16,6 @@ Slice bank statements have:
 - Account holder name from first non-header text line
 """
 
-from __future__ import annotations
-
 import re
 from typing import Any
 

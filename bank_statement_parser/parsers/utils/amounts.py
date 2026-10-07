@@ -1,7 +1,5 @@
 """Amount parsing helpers shared across parsers."""
 
-from __future__ import annotations
-
 import re
 from decimal import Decimal, InvalidOperation
 
