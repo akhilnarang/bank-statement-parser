@@ -30,6 +30,7 @@ The visual PDF layout and what pdfplumber extracts are often very different. You
 ```python
 from bank_statement_parser.extractor import extract_raw_pdf
 from pathlib import Path
+
 raw = extract_raw_pdf(Path("<pdf_path>"), include_blocks=False, password=None)
 ```
 
@@ -40,6 +41,7 @@ Then examine the output **interactively** — this may take multiple rounds:
 3. **If tables are empty or single-row**, the bank renders transactions as positioned text, not tables. Print word-lines instead:
    ```python
    from bank_statement_parser.parsers.extractors.wordlines import group_words_into_lines
+
    lines = group_words_into_lines(raw["pages"][N]["words"])
    ```
 4. **For word-line parsing**, print x-positions (`w["x0"]`) of the header line and a few data lines to determine column boundaries.
