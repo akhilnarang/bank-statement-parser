@@ -44,14 +44,19 @@ def classify_columns(
             cols["value_date"] = index
         elif "DATE" in upper and "date" not in cols:
             cols["date"] = index
-        elif upper in (
-            "NARRATION",
-            "PARTICULARS",
-            "DESCRIPTION",
-            "DETAILS",
-            "TRANSACTION DETAILS",
-            "TRANSACTION PARTICULARS",
-        ) or "MODE" in upper and "narration" not in cols:
+        elif (
+            upper
+            in (
+                "NARRATION",
+                "PARTICULARS",
+                "DESCRIPTION",
+                "DETAILS",
+                "TRANSACTION DETAILS",
+                "TRANSACTION PARTICULARS",
+            )
+            or "MODE" in upper
+            and "narration" not in cols
+        ):
             cols["narration"] = index
         elif "BALANCE" in upper:
             cols["balance"] = index
@@ -120,7 +125,8 @@ def parse_table_transactions(
                 amount=amount,
                 transaction_type=direction,
                 balance=extract_amount(balance_str) if balance_str else None,
-                reference_number=ref_str or extract_reference_number(narration, channel),
+                reference_number=ref_str
+                or extract_reference_number(narration, channel),
                 channel=channel,
                 value_date=parse_date_text(value_date_str) if value_date_str else None,
             )

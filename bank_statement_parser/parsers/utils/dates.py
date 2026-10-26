@@ -65,7 +65,7 @@ def parse_date(
 
     for hint in [*(format_hints or []), *_DEFAULT_FORMAT_HINTS]:
         try:
-            return datetime.strptime(normalized, hint).date()  # noqa: DTZ007
+            return datetime.strptime(normalized, hint).date()
         except ValueError:
             continue
 
@@ -77,7 +77,7 @@ def parse_date(
             normalized,
             dayfirst=dayfirst,
             fuzzy=False,
-            default=datetime(2000, 1, 1),  # noqa: DTZ001
+            default=datetime(2000, 1, 1),
         ).date()
     except ValueError, OverflowError, TypeError:
         return None

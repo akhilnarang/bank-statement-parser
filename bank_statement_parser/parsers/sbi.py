@@ -269,7 +269,9 @@ class SbiBankStatementParser(GenericBankStatementParser):
                 else ""
             )
             debit_str = (
-                str(row[cols["debit"]] or "").strip() if cols["debit"] < len(row) else ""
+                str(row[cols["debit"]] or "").strip()
+                if cols["debit"] < len(row)
+                else ""
             )
             credit_amt = extract_amount(credit_str)
             debit_amt = extract_amount(debit_str)
