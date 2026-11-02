@@ -98,7 +98,7 @@ Follow the skill at `.agents/skills/add-bank-parser/SKILL.md`. The skill walks t
 - Keep CLI presentation logic out of parser core logic.
 - Use `parsers/utils/dates.py` for shared date parsing; downstream date strings must remain `DD/MM/YYYY`.
 - Use `parsers/extractors/positioning.py::ColumnThresholds` for word-positioned layouts instead of scattering raw x-threshold numbers.
-- Python 3.14 / PEP 758 syntax is allowed here; do not "fix" `except E1, E2:` forms just for style.
+- Python 3.15 / PEP 758 syntax is allowed here; do not "fix" `except E1, E2:` forms just for style.
 
 ## Non-Goals
 
