@@ -144,13 +144,7 @@ class IdfcBankStatementParser(GenericBankStatementParser):
 
         for page in pages:
             tables = page.get("tables", [])
-            page_txns: list[BankTransaction] = []
-
-            for table in tables:
-                if not table:
-                    continue
-                txns = self._parse_idfc_table(table)
-                page_txns.extend(txns)
+            page_txns = [*self._parse_idfc_table(table) for table in tables if table]
 
             # If table extraction found nothing for this page but there's
             # a transaction table in the text, try parsing the merged table

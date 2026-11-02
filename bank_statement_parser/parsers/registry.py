@@ -10,21 +10,23 @@ from bank_statement_parser.parsers.sbi import SbiBankStatementParser
 from bank_statement_parser.parsers.slice import SliceBankStatementParser
 from bank_statement_parser.parsers.uboi import UboiBankStatementParser
 
-PARSER_REGISTRY: dict[str, type[BankStatementParser]] = {
-    "hdfc": HdfcBankStatementParser,
-    "icici": IciciBankStatementParser,
-    "idfc": IdfcBankStatementParser,
-    "indusind": IndusindBankStatementParser,
-    "kotak": KotakBankStatementParser,
-    "sbi": SbiBankStatementParser,
-    "slice": SliceBankStatementParser,
-    "uboi": UboiBankStatementParser,
-}
+PARSER_REGISTRY: frozendict[str, type[BankStatementParser]] = frozendict(
+    {
+        "hdfc": HdfcBankStatementParser,
+        "icici": IciciBankStatementParser,
+        "idfc": IdfcBankStatementParser,
+        "indusind": IndusindBankStatementParser,
+        "kotak": KotakBankStatementParser,
+        "sbi": SbiBankStatementParser,
+        "slice": SliceBankStatementParser,
+        "uboi": UboiBankStatementParser,
+    }
+)
 
 
 def get_supported_bank_slugs() -> tuple[str, ...]:
     """Return registered bank slugs in CLI/display order."""
-    return tuple(PARSER_REGISTRY.keys())
+    return tuple(PARSER_REGISTRY)
 
 
 def create_parser(bank: str) -> BankStatementParser:

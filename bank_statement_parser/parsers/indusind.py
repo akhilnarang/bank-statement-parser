@@ -314,7 +314,7 @@ class IndusindBankStatementParser(GenericBankStatementParser):
                     balance = f"-{bal_val}" if is_negative else bal_val
 
             channel = detect_channel(narration)
-            ref = ref_str if ref_str else extract_reference_number(narration, channel)
+            ref = ref_str or extract_reference_number(narration, channel)
 
             txns.append(
                 BankTransaction(
