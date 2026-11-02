@@ -202,17 +202,11 @@ class SliceBankStatementParser(GenericBankStatementParser):
         pages: list[dict[str, Any]],
     ) -> list[BankTransaction]:
         """Parse transactions from all pages using word-position analysis."""
-        all_txns: list[BankTransaction] = []
-
-        for page in pages:
-            words = page.get("words", [])
-            if not words:
-                continue
-            lines = group_words_into_lines(words)
-            page_txns = self._parse_page_lines(lines)
-            all_txns.extend(page_txns)
-
-        return all_txns
+        return [
+            *self._parse_page_lines(group_words_into_lines(words))
+            for page in pages
+            if (words := page.get("words", []))
+        ]
 
     def _parse_page_lines(
         self,

@@ -19,10 +19,10 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from bank_statement_parser.extractor import extract_raw_pdf, is_pdf_encrypted
 from bank_statement_parser.models import ParsedBankStatement
 from bank_statement_parser.parsers.factory import get_parser
 from bank_statement_parser.parsers.registry import get_supported_bank_slugs
+lazy from bank_statement_parser.extractor import extract_raw_pdf, is_pdf_encrypted
 
 _SUPPORTED_BANK_SLUGS = get_supported_bank_slugs()
 
@@ -74,7 +74,7 @@ def write_transactions_csv(parsed: ParsedBankStatement, output_path: Path) -> No
             }
         )
 
-    with output_path.open("w", newline="", encoding="utf-8") as csv_file:
+    with output_path.open("w", newline="") as csv_file:
         writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(rows)
@@ -260,7 +260,6 @@ def parse_statement(
 
         output_path.write_text(
             json.dumps(output_obj, indent=2, ensure_ascii=True),
-            encoding="utf-8",
         )
         typer.echo(f"Wrote extraction to {output_path}")
 
@@ -269,14 +268,12 @@ def parse_statement(
         parsed_dict["bank_parser"] = parser_impl.bank
         export_json.write_text(
             json.dumps(parsed_dict, indent=2, ensure_ascii=True),
-            encoding="utf-8",
         )
         typer.echo(f"Wrote parsed JSON to {export_json}")
 
     if export_raw_json is not None:
         export_raw_json.write_text(
             json.dumps(raw_data, indent=2, ensure_ascii=True),
-            encoding="utf-8",
         )
         typer.echo(f"Wrote raw JSON to {export_raw_json}")
 
