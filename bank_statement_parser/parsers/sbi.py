@@ -35,7 +35,7 @@ _NAME_RE = re.compile(r"My\s+Name\s+(.+?)\s+My\s+Address", re.IGNORECASE)
 _MONEY_RE = re.compile(r"^\d[\d,]*\.\d{2}$")
 _ON_DATE_RE = re.compile(r"on\s+(\d{2}-\d{2}-\d{2})", re.IGNORECASE)
 _SBI_DATE_RE = re.compile(r"^(\d{2})-(\d{2})-(\d{2})$")
-_OTHPG_REF_RE = re.compile(r"^OTHPG\s+(\d{12})")
+_OTHPG_REF_RE = re.compile(r"^OTHPG\s+(\d{12})(?!\d)")
 
 
 def _sbi_date(cell: str) -> str | None:
