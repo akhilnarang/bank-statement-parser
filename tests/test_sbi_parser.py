@@ -60,9 +60,19 @@ def test_sbi_table_extracts_txns_balances_and_period():
             "5000.00",
         ],
         [
+            "31-07-26",
+            "OTHPG 900000000003SAMPLE SHOP CITY",
+            None,
+            None,
+            "-",
+            "0",
+            "1000.00",
+            "4000.00",
+        ],
+        [
             "Your Closing Balance on 31-07-26:",
             None,
-            "5000.00",
+            "4000.00",
             None,
             None,
             None,
@@ -73,7 +83,7 @@ def test_sbi_table_extracts_txns_balances_and_period():
     result = _parse(table)
     txns = result["transactions"]
 
-    assert len(txns) == 2
+    assert len(txns) == 3
     # 2-digit year is forced to 20YY, not the %y 1900s pivot.
     assert txns[0].date == "28/07/2026"
     assert txns[0].transaction_type == "credit"
@@ -82,8 +92,9 @@ def test_sbi_table_extracts_txns_balances_and_period():
     assert txns[1].transaction_type == "debit"
     assert txns[1].amount == "5000.00"
     assert txns[1].counterparty == "JOHN DOE"
+    assert txns[2].reference_number == "900000000003"
     assert result["opening_balance"] == "0.00"
-    assert result["closing_balance"] == "5000.00"
+    assert result["closing_balance"] == "4000.00"
     assert result["period_start"] == "01/07/2026"
     assert result["period_end"] == "31/07/2026"
 
