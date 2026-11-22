@@ -48,6 +48,7 @@ _NAME_RE = re.compile(r"My\s+Name\s+(.+?)\s+My\s+Address", re.IGNORECASE)
 _MONEY_RE = re.compile(r"^\d[\d,]*\.\d{2}$")
 _ON_DATE_RE = re.compile(r"on\s+(\d{2}-\d{2}-\d{2})", re.IGNORECASE)
 _SBI_DATE_RE = re.compile(r"^(\d{2})-(\d{2})-(\d{2})$")
+_OTHPG_REF_RE = re.compile(r"^OTHPG\s+(\d{12})(?!\d)")
 
 _YONO_PERIOD_RE = re.compile(
     r"Statement\s+From\s*:\s*(\d{2}-\d{2}-\d{4})\s+to\s+(\d{2}-\d{2}-\d{4})",
@@ -292,6 +293,8 @@ class SbiBankStatementParser(GenericBankStatementParser):
 
             channel = detect_channel(narration)
             ref = extract_reference_number(narration, channel)
+            if not ref and (pg := _OTHPG_REF_RE.match(narration)):
+                ref = pg.group(1)
             # Cheque / some references live only in the Ref.No./Chq.No. column;
             # its empty marker is "-".
             if not ref and "ref" in cols and cols["ref"] < len(row):
