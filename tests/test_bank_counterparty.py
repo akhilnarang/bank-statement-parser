@@ -152,7 +152,7 @@ def test_idfc_returns_none_on_unknown_layout():
 
 def test_idfc_empty_input():
     assert idfc_cp("", None, "debit") is None
-    assert idfc_cp(None, None, "debit") is None  # type: ignore[arg-type]
+    assert idfc_cp(None, None, "debit") is None  # ty: ignore[invalid-argument-type]
 
 
 # ---------------------------------------------------------------------------

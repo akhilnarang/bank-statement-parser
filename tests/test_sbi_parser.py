@@ -174,6 +174,7 @@ def test_sbi_yono_statement_parses_and_reconciles():
     # The summary closing differs from the last row balance on purpose. This
     # proves the closing comes from the summary, not the last-row fallback.
     assert parsed.closing_balance == "1,950.00"
+    assert parsed.reconciliation is not None
     assert parsed.reconciliation.balance_delta == "50.00"
 
     upi, pos, wrapped_pos, neft = parsed.transactions
