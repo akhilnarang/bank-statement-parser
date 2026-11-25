@@ -575,7 +575,9 @@ def _build_fmt_b_txn(
 
     channel = detect_channel(narration)
     is_placeholder_ref = ref_token and set(ref_token) == {"0"}
-    reference_number: str | None = ref_token if ref_token and not is_placeholder_ref else None
+    reference_number: str | None = (
+        ref_token if ref_token and not is_placeholder_ref else None
+    )
     if not reference_number:
         reference_number = extract_reference_number(narration, channel)
     value_date = parse_date_text(value_dt_str)

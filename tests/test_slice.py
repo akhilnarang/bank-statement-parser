@@ -18,7 +18,9 @@ def test_upi_prefers_narration_utr_over_column_ref():
     """Slice row layout: narration carries the 12-digit UTR, ref column
     carries the 16-digit slice-internal txn id. We want the UTR."""
     column_ref = "8001234567890123"
-    narration = "UPI-Credit-100200300400-SAMPLE PAYER- KARB-sample.payer-2@okaxis-amazon prime"
+    narration = (
+        "UPI-Credit-100200300400-SAMPLE PAYER- KARB-sample.payer-2@okaxis-amazon prime"
+    )
 
     assert _select_reference(narration, "upi", column_ref) == "100200300400"
 
@@ -40,7 +42,9 @@ def test_imps_keeps_column_ref_even_when_narration_has_long_digits():
     number' would introduce false uniqueness collisions and confuse the
     reconciler. Stick with the column ref for IMPS."""
     column_ref = "8001234567890123"
-    narration = "IMPS Credit-Mr Sample Payer-ABCD0009 999-XX5678-999900000001-Selftransfer"
+    narration = (
+        "IMPS Credit-Mr Sample Payer-ABCD0009 999-XX5678-999900000001-Selftransfer"
+    )
 
     assert _select_reference(narration, "imps", column_ref) == "8001234567890123"
 
@@ -49,7 +53,10 @@ def test_non_upi_imps_channel_uses_column_ref_first_then_narration_fallback():
     """For interest credits, bill payments, etc. the column ref (if any)
     wins; otherwise the channel-aware narration extractor runs (which
     returns None for non-upi/imps/neft/rtgs/netbanking channels)."""
-    assert _select_reference("Interest Cr. for 31-Mar-2026", "interest", "20226091470594") == "20226091470594"
+    assert (
+        _select_reference("Interest Cr. for 31-Mar-2026", "interest", "20226091470594")
+        == "20226091470594"
+    )
     assert _select_reference("Interest Cr. for 31-Mar-2026", "interest", None) is None
 
 
@@ -73,6 +80,8 @@ def test_upi_narration_with_multiple_long_digit_runs_picks_first_run():
     first."""
     # Synthetic case modelled on real layout: counterparty name then
     # UTR, then a tail with another long numeric token.
-    narration = "UPI Credit-MERCHANT-merchant@bank-IFSC0000123-100200300400-Order 999888777666"
+    narration = (
+        "UPI Credit-MERCHANT-merchant@bank-IFSC0000123-100200300400-Order 999888777666"
+    )
 
     assert _select_reference(narration, "upi", "STMT-INTERNAL") == "100200300400"

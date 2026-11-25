@@ -86,7 +86,7 @@ def _extract_pos(narration: str) -> str | None:
     matches = list(_POS_TIME_RE.finditer(narration))
     if not matches:
         return None
-    tail = narration[matches[-1].end():].strip()
+    tail = narration[matches[-1].end() :].strip()
     return tail or None
 
 

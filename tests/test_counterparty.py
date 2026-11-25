@@ -193,7 +193,11 @@ CASES: list[tuple[str, str | None, str | None]] = [
     # falls back to narration.
     ("MCD REF PAY WWW 250101", "debit_card", None),
     ("999999999999:Int.Pd:01-04-2025 to 01-07-2025", "interest", None),
-    ("CMS TRANSACTION CMS/ EXCESS CREDIT REFUND/ICICI BANK LTD CRE", "netbanking", None),
+    (
+        "CMS TRANSACTION CMS/ EXCESS CREDIT REFUND/ICICI BANK LTD CRE",
+        "netbanking",
+        None,
+    ),
     # No channel hint → no extraction, even for a CLG-shaped narration.
     ("CLG/SAMPLE CUSTOMER NAME/000099/ABC/01.01.2025", None, None),
     # Edge: empty narration

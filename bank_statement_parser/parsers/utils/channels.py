@@ -34,9 +34,7 @@ _CHANNEL_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("cheque", re.compile(r"\bCHQ\b|\bCHEQUE\b", re.IGNORECASE)),
     (
         "interest",
-        re.compile(
-            r"\bINT\.?\s*PAID\b|\bINT\.?\s*PD\b|\bINTEREST\b", re.IGNORECASE
-        ),
+        re.compile(r"\bINT\.?\s*PAID\b|\bINT\.?\s*PD\b|\bINTEREST\b", re.IGNORECASE),
     ),
     ("ach_credit", re.compile(r"\bACH[\s-]*C\b", re.IGNORECASE)),
     ("ach_debit", re.compile(r"\bACH[\s-]*D\b", re.IGNORECASE)),

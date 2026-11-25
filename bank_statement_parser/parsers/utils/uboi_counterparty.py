@@ -28,7 +28,11 @@ def _strip_trailing_ref(text: str) -> str | None:
     plain name word stays.
     """
     tokens = text.split()
-    if len(tokens) > 1 and len(tokens[-1]) >= 6 and _TRAILING_REF_RE.fullmatch(tokens[-1]):
+    if (
+        len(tokens) > 1
+        and len(tokens[-1]) >= 6
+        and _TRAILING_REF_RE.fullmatch(tokens[-1])
+    ):
         tokens = tokens[:-1]
     return " ".join(tokens).strip() or None
 
